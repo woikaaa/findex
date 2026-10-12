@@ -1,0 +1,20 @@
+[project]
+name = "findex"
+version = "0.1.0"
+description = "A streaming search engine, built lab by lab."
+requires-python = ">=3.10"
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["ruff", "pytest"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/findex"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
