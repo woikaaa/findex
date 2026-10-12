@@ -1,37 +1,33 @@
 """
-tokenize.py — turns raw text into a lazy stream of normalized tokens.
+перетворює сирий текст на потік нормалізованих слів (токенів), які віддаються по одному.
 
-Policy (documented, per the lab's requirement):
+Правила:
 
-  1. Unicode-normalize with NFC first, so that visually identical
-     characters encoded differently (e.g. "é" as one code point vs.
-     "e" + a combining accent) become the *same* token. Without this,
-     "café" and "café" would be counted as two different words.
+  1. Спочатку Unicode-нормалізація NFC. Один і той самий символ можна
+     записати по-різному (наприклад, "é" як один символ або як "e" плюс
+     окремий значок наголосу). Після NFC вони стають однаковими, і слово
+     "café" не рахується за два різних слова.
 
-  2. Casefold, not lower(). casefold() is the aggressive, locale
-     independent normalization meant for caseless comparison
-     ("Straße".casefold() == "strasse"); plain lower() misses this.
+  2. Використовуємо casefold(), а не lower(). casefold() це більш
+     "сильний" варіант для порівняння слів без урахування регістру
+     ("Straße".casefold() == "strasse"), а lower() цього не вміє.
 
-  3. Tokens are matched with re.finditer over the pattern below, not
-     re.findall — finditer yields match objects one at a time instead
-     of building a list of every match up front, which is the whole
-     point of a "streaming" tokenizer.
+  3. Слова шукаємо через re.finditer, а не re.findall. finditer віддає
+     знайдене по одному, а findall одразу будує великий список усіх слів.
+     Саме тому наш токенізатор ліниво працює потоком.
 
-  4. Apostrophes: kept *inside* a word (don't, п'ять) but not at the
-     edges. We treat ' and the Unicode right single quote U+2019 as
-     an apostrophe, because real text (especially Ukrainian: п'ять,
-     м'ята) uses both interchangeably.
+  4. Апостроф лишається всередині слова (don't, п'ять), але не на краях.
+     Рахуємо апострофом і ', і символ U+2019, бо в українських текстах
+     (п'ять, м'ята) трапляються обидва.
 
-  5. Hyphens: kept inside a word (well-known) but not as leading/
-     trailing punctuation, same reasoning as apostrophes.
+  5. Дефіс лишається всередині слова (well-known), але не на краях.
+     Причина та сама, що й для апострофа.
 
-  6. Digits: \\w already matches digits, so "covid19" or "2024" are
-     tokens on their own; we do not special-case numbers further in
-     this lab.
+  6. Цифри: \\w уже включає цифри, тому "covid19" або "2024" теж стають
+     окремими словами. Окремо числа в цій лабі не обробляємо.
 
-  7. \\w in Python 3 is Unicode-aware by default, so Cyrillic,
-     accented Latin, and other scripts are matched correctly with no
-     extra flags.
+  7. \\w у Python 3 за замовчуванням розуміє Unicode, тому кирилиця та
+     інші алфавіти знаходяться правильно без додаткових прапорців.
 """
 
 from __future__ import annotations
@@ -40,26 +36,30 @@ import re
 import unicodedata
 from collections.abc import Iterator
 
-# A token is a run of "word" characters, optionally containing a single
-# internal apostrophe or hyphen (but never starting/ending with one).
-# \w is Unicode-aware, so this also matches Cyrillic, accented Latin, etc.
+# Токен це послідовність "словесних" символів. Всередині може бути
+# один апостроф або дефіс, але не на початку і не в кінці.
+# \w розуміє Unicode, тому підходить і для кирилиці, і для літер з наголосом.
 _TOKEN_RE = re.compile(
     r"\w+(?:['\u2019-]\w+)*",
     re.UNICODE,
 )
 
 
-TOKEN_RE = _TOKEN_RE  # public alias, reused by snippets.py
+TOKEN_RE = _TOKEN_RE  # публічне ім'я, його використовує snippets.py
 
 
 def tokenize(text: str) -> Iterator[str]:
-    """Yield normalized tokens from ``text``, one at a time.
+    """Віддає слова з тексту ``text`` по одному.
 
-    Steps applied, in order: NFC normalization -> casefold -> regex
-    match via re.finditer (lazy, unlike re.findall).
+    Кроки по черзі: нормалізація NFC -> прибрати наголос -> casefold ->
+    пошук слів через re.finditer (ліниво, на відміну від re.findall).
     """
+    # я роблю символи однаковими, щоб "é" не був двома різними способами
     normalized = unicodedata.normalize("NFC", text)
-    normalized = normalized.replace("\u0301", "")  # прибираємо знак наголосу (Архітекту́ра)
+    normalized = normalized.replace("́", "")  # прибираємо знак наголосу (Архітекту́ра)
+    # роблю всі літери малими
     folded = normalized.casefold()
+    # шукаю слова по одному, а не всі разом
     for match in _TOKEN_RE.finditer(folded):
+        # віддаю знайдене слово
         yield match.group(0)

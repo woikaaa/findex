@@ -1,18 +1,3 @@
-"""
-stats.py — chains iter_documents() and tokenize() into a single-pass
-pipeline that computes corpus statistics in (roughly) constant memory.
-
-Usage:
-    python -m findex.stats data/                  # lazy (default)
-    python -m findex.stats data/ --limit 5         # first 5 docs only
-    python -m findex.stats data/ --eager           # deliberately greedy version,
-                                                    # for the M4 measurement
-
-Both modes print the same numbers: document count, total tokens,
-vocabulary size, top-50 terms, elapsed time, and peak memory
-(tracemalloc). Only *how* they get there differs.
-"""
-
 from __future__ import annotations
 
 import argparse
@@ -27,49 +12,55 @@ from findex.tokenize import tokenize
 
 
 def run_lazy(root: Path, limit: int | None) -> Counter:
-    """The point of this lab: a pipeline of generators, nothing
-    materialized except the Counter itself.
+    """Головна ідея лаби: ланцюжок генераторів, у пам'яті не лежить нічого,
+    крім самого лічильника Counter.
 
-    Memory in flight at any moment: one Document, the tokens of its
-    current sentence-ish chunk (finditer yields these one at a time
-    too), and the running Counter. Never the whole corpus.
+    У будь-який момент у пам'яті: один Document, слова, які зараз віддає
+    finditer (теж по одному), і лічильник, що росте. Весь корпус ніколи.
     """
+    # беру документи по одному (ледачо)
     docs = iter_documents(root)
     if limit is not None:
-        docs = islice(docs, limit)  # still lazy: only pulls `limit` documents
+        docs = islice(docs, limit)  # усе ще ліниво: бере лише `limit` документів
 
+    # генераторний вираз: слова течуть по одному з документа в Counter
     token_stream = (tok for doc in docs for tok in tokenize(doc.text))
+    # Counter сам рахує, скільки разів зустрівся кожен токен
     return Counter(token_stream)
 
 
 def run_eager(root: Path, limit: int | None) -> Counter:
-    """The deliberately "wrong" version for the M4 comparison: read
-    every document into a list, tokenize every document into a list
-    of lists, THEN count. Every arrow here is a full materialization.
+    """Навмисно "погана" версія для порівняння: читає всі документи в список,
+    розбиває кожен на список слів, І ТІЛЬКИ ПОТІМ рахує. Кожен крок тут
+    повністю складає дані в пам'ять.
     """
-    docs = list(iter_documents(root))          # (1) whole corpus in memory
+    docs = list(iter_documents(root))          # (1) увесь корпус у пам'яті
     if limit is not None:
         docs = docs[:limit]
 
     all_tokens: list[list[str]] = []
     for doc in docs:
-        all_tokens.append(list(tokenize(doc.text)))  # (2) every doc's tokens as a list
+        all_tokens.append(list(tokenize(doc.text)))  # (2) слова кожного документа списком
 
     flat: list[str] = []
     for doc_tokens in all_tokens:
-        flat.extend(doc_tokens)                 # (3) one giant flat list of all tokens
+        flat.extend(doc_tokens)                 # (3) один гігантський список усіх слів
 
-    return Counter(flat)                        # (4) counted only at the very end
+    # рахую тільки в кінці, коли все вже в пам'яті
+    return Counter(flat)                        # (4) рахуємо лише в самому кінці
 
 
 def _doc_count(root: Path, limit: int | None) -> int:
+    """Рахує документи (проходить по них ліниво, нічого не зберігаючи)."""
     docs = iter_documents(root)
     if limit is not None:
         docs = islice(docs, limit)
+    # просто додаю одиницю за кожен документ
     return sum(1 for _ in docs)
 
 
 def main() -> None:
+    # аргументи командного рядка
     parser = argparse.ArgumentParser(description="findex corpus statistics")
     parser.add_argument("root", type=Path, help="corpus directory or .jsonl file")
     parser.add_argument(
@@ -83,21 +74,26 @@ def main() -> None:
     parser.add_argument(
         "--top", type=int, default=50, help="how many top terms to print",
     )
+    # зчитую те, що я написала в терміналі
     args = parser.parse_args()
 
+    # вмикаємо вимірювання пам'яті й засікаємо час
     tracemalloc.start()
     start = time.perf_counter()
 
     counts = run_eager(args.root, args.limit) if args.eager else run_lazy(args.root, args.limit)
 
+    # рахую, скільки секунд пройшло
     elapsed = time.perf_counter() - start
-    _current, peak = tracemalloc.get_traced_memory()
+    _current, peak = tracemalloc.get_traced_memory()  # нас цікавить лише пік
+    # зупиняю вимірювання пам'яті
     tracemalloc.stop()
 
     n_docs = _doc_count(args.root, args.limit)
-    n_tokens = sum(counts.values())
-    vocab_size = len(counts)
+    n_tokens = sum(counts.values())   # усього слів
+    vocab_size = len(counts)          # різних слів
 
+    # підпис режиму для виводу
     mode = "eager (lists)" if args.eager else "lazy (generators)"
     print(f"mode:              {mode}")
     print(f"documents:         {n_docs}")
@@ -107,6 +103,7 @@ def main() -> None:
     print(f"peak memory:       {peak / 1024:.1f} KiB  ({peak} bytes)")
     print()
     print(f"top {args.top} terms:")
+    # друкую найчастіші слова
     for term, count in counts.most_common(args.top):
         print(f"  {term:<20} {count}")
 

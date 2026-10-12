@@ -1,10 +1,8 @@
 """
-model.py — the data types of the index.
+типи даних індексу.
 
-They live in their OWN module on purpose: pickle stores the *module path*
-of every class it saves. If Posting were defined in index.py and we ran
-`python -m findex.index`, that module would be called `__main__`, and
-`python -m findex.search` could not unpickle the file later.
+`python -m findex.index` цей модуль називався б `__main__`, і потім
+`python -m findex.search` не зміг би прочитати файл.
 """
 
 from __future__ import annotations
@@ -16,93 +14,94 @@ from functools import cached_property
 
 @dataclass(frozen=True, slots=True)
 class Posting:
-    """One (document, term-frequency) pair. Frozen => hashable, slots => small."""
+    """Пара (документ, скільки разів слово в ньому).
+    frozen - можна хешувати, slots- займає менше пам'яті."""
     doc_id: int
-    tf: int
-    positions: tuple[int, ...] = ()
+    tf: int                            # частота слова в документі
+    positions: tuple[int, ...] = ()    # де саме слово стоїть (необов'язково)
 
 
 @dataclass(frozen=True, slots=True)
 class DocMeta:
-    """What we need to show a result to the user."""
+    """Те, що треба, щоб показати результат користувачу."""
     path: str
     title: str
 
 
 @dataclass
 class PlainPosting:
-    """Same as Posting but a plain dataclass (has __dict__).
-    Exists ONLY for the M4 memory comparison."""
+    """Те саме, що Posting, але звичайний dataclass (має __dict__).
+    Існує ЛИШЕ для порівняння пам'яті в memstudy."""
     doc_id: int
     tf: int
     positions: tuple[int, ...] = ()
 
 
 class Index(Mapping):
-    """The inverted index, as an object that behaves like a read-only dict.
-
-    Inheriting collections.abc.Mapping: we implement only __getitem__,
-    __iter__ and __len__; Mapping gives keys(), items(), values(), get() ...
-
-    storage:
-      "dataclass" -> postings[term] = list[PlainPosting]
-      "slots"     -> postings[term] = list[Posting]
-      "array"     -> postings[term] = (array('I') of doc_ids, array('I') of tfs)
-    index[term] always returns a list of posting objects, whatever the storage.
-    """
-
     def __init__(self, storage: str, has_positions: bool, postings: dict,
                  doc_lengths: dict[int, int], doc_meta: dict[int, DocMeta]) -> None:
+        # тут я просто запам'ятовую все, що передали в клас
         self.storage = storage
         self.has_positions = has_positions
-        self.postings = postings
-        self.doc_lengths = doc_lengths
-        self.doc_meta = doc_meta
+        self.postings = postings        # слово -> список записів
+        self.doc_lengths = doc_lengths  # doc_id -> скільки слів у документі
+        self.doc_meta = doc_meta        # doc_id -> шлях і заголовок
         self.closed = False
 
-    # ---- Mapping protocol (what len(), `in`, [], for ... call behind the scenes)
+    # ---- протокол Mapping (що Python викликає за лаштунками для len(), `in`, [], for ...)
     def __getitem__(self, term: str):
-        entry = self.postings[term]            # KeyError if the term is absent
+        # беру запис слова зі словника
+        entry = self.postings[term]            # KeyError, якщо слова немає
         if self.storage == "array":
+            # розкладаю пару масивів на дві частини
             ids, tfs = entry
             return [Posting(i, t) for i, t in zip(ids, tfs)]
         return entry
 
     def __iter__(self):
+        # перебираю слова індексу
         return iter(self.postings)
 
     def __len__(self) -> int:
+        # скільки різних слів в індексі
         return len(self.postings)
 
-    def __contains__(self, term: object) -> bool:   # faster than Mapping's default
+    def __contains__(self, term: object) -> bool:   # швидше, ніж стандартний у Mapping
+        # просто питаю в словника, чи є таке слово
         return term in self.postings
 
     def __repr__(self) -> str:
         return (f"Index(terms={len(self):_}, docs={self.num_docs:_}, "
                 f"storage={self.storage!r}, positions={self.has_positions})")
 
-    # ---- computed attributes
+    # ---- обчислювані значення
     @property
     def num_docs(self) -> int:
+        """Скільки всього документів."""
+        # скільки документів, стільки й довжин
         return len(self.doc_lengths)
 
     @cached_property
     def avg_doc_length(self) -> float:
-        """Computed once, then cached on the instance (BM25 needs it per document)."""
+        """Рахується один раз і запам'ятовується (BM25 потрібна вона для кожного документа)."""
         return sum(self.doc_lengths.values()) / self.num_docs if self.doc_lengths else 0.0
 
     def doc_length(self, doc_id: int) -> int:
+        """Скільки слів у документі."""
+        # довжина конкретного документа
         return self.doc_lengths[doc_id]
 
     def df(self, term: str) -> int:
+        """У скількох документах зустрічається слово."""
+        # get не падає, якщо слова немає
         entry = self.postings.get(term)
         if entry is None:
             return 0
         return len(entry[0]) if self.storage == "array" else len(entry)
 
-    # ---- helpers from Lab 2
+    # ---- допоміжні функції з лаби 2
     def doc_ids(self, term: str):
-        """Sorted doc_ids containing `term` (empty if unknown)."""
+        """Відсортовані doc_id, де є слово `term` (порожньо, якщо слова немає)."""
         entry = self.postings.get(term)
         if entry is None:
             return []
@@ -111,12 +110,15 @@ class Index(Mapping):
         return [p.doc_id for p in entry]
 
     def all_doc_ids(self) -> list[int]:
+        """Номери всіх документів."""
+        # документи йдуть по порядку
         return sorted(self.doc_meta)
 
     def close(self) -> None:
-        """Release the big structures (called by open_index, even on exceptions)."""
+        """Звільняє великі структури (викликається в open_index, навіть при помилці)."""
+        # порожніми словниками звільняю пам'ять
         self.postings = {}
         self.doc_lengths = {}
         self.doc_meta = {}
-        self.__dict__.pop("avg_doc_length", None)
+        self.__dict__.pop("avg_doc_length", None)  # прибираємо закешоване значення
         self.closed = True

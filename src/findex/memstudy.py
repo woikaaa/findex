@@ -1,8 +1,8 @@
 """
-memstudy.py — the M4 table: three ways to store postings, same corpus.
+таблиця порівняння пам'яті: три способи зберігати записи на одному й тому ж корпусі.
 
     python -m findex.memstudy data/
-    python -m findex.memstudy data/ --positions      # (skips the array row)
+    python -m findex.memstudy data/ --positions      # (пропускає рядок array)
 """
 
 from __future__ import annotations
@@ -17,6 +17,7 @@ from pathlib import Path
 from findex import store
 from findex.index import build_index
 
+# (підпис у таблиці, назва способу зберігання)
 ROWS = [
     ("list[Posting], plain @dataclass", "dataclass"),
     ("list[Posting], slots=True", "slots"),
@@ -36,20 +37,25 @@ def main() -> None:
           "| ----------- | --------- |")
     for label, storage in ROWS:
         if storage == "array" and a.positions:
-            continue
-        gc.collect()
+            continue  # array не вміє зберігати позиції
+        gc.collect()  # чистимо пам'ять перед кожним виміром
         tracemalloc.start()
+        # будую індекс цим способом зберігання
         index = build_index(a.root, storage, a.positions)
-        current, peak = tracemalloc.get_traced_memory()
+        current, peak = tracemalloc.get_traced_memory()  # зараз і пік
         tracemalloc.stop()
 
+        # зберігаємо у тимчасову папку, міряємо розмір файлу і час завантаження
         with tempfile.TemporaryDirectory() as d:
             path = Path(d) / "idx.pkl"
             store.save_pickle(index, path)
+            # розмір файлу в байтах
             size = path.stat().st_size
+            # видаляю індекс, щоб міряти чисте завантаження
             del index
             gc.collect()
             t0 = time.perf_counter()
+            # завантажую назад і міряю час
             store.load_pickle(path)
             load = time.perf_counter() - t0
         print(f"| {label} | {peak / 1e6:.1f} MB | {current / 1e6:.1f} MB "
