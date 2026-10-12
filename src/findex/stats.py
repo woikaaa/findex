@@ -12,12 +12,6 @@ from findex.tokenize import tokenize
 
 
 def run_lazy(root: Path, limit: int | None) -> Counter:
-    """Головна ідея лаби: ланцюжок генераторів, у пам'яті не лежить нічого,
-    крім самого лічильника Counter.
-
-    У будь-який момент у пам'яті: один Document, слова, які зараз віддає
-    finditer (теж по одному), і лічильник, що росте. Весь корпус ніколи.
-    """
     # беру документи по одному (ледачо)
     docs = iter_documents(root)
     if limit is not None:
@@ -30,10 +24,6 @@ def run_lazy(root: Path, limit: int | None) -> Counter:
 
 
 def run_eager(root: Path, limit: int | None) -> Counter:
-    """Навмисно "погана" версія для порівняння: читає всі документи в список,
-    розбиває кожен на список слів, І ТІЛЬКИ ПОТІМ рахує. Кожен крок тут
-    повністю складає дані в пам'ять.
-    """
     docs = list(iter_documents(root))          # (1) увесь корпус у пам'яті
     if limit is not None:
         docs = docs[:limit]

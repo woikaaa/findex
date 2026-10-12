@@ -1,8 +1,5 @@
 """
 типи даних індексу.
-
-`python -m findex.index` цей модуль називався б `__main__`, і потім
-`python -m findex.search` не зміг би прочитати файл.
 """
 
 from __future__ import annotations
@@ -30,8 +27,6 @@ class DocMeta:
 
 @dataclass
 class PlainPosting:
-    """Те саме, що Posting, але звичайний dataclass (має __dict__).
-    Існує ЛИШЕ для порівняння пам'яті в memstudy."""
     doc_id: int
     tf: int
     positions: tuple[int, ...] = ()
