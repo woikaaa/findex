@@ -1,4 +1,4 @@
-[project]
+'[project]
 name = "findex"
 version = "0.1.0"
 description = "A streaming search engine, built lab by lab."
