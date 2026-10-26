@@ -56,7 +56,7 @@ def tokenize(text: str) -> Iterator[str]:
     """
     # я роблю символи однаковими, щоб "é" не був двома різними способами
     normalized = unicodedata.normalize("NFC", text)
-    normalized = normalized.replace("́", "")  # прибираємо знак наголосу (Архітекту́ра)
+    normalized = normalized.replace("\u0301", "")  # прибираємо знак наголосу (Архітекту́ра)
     # роблю всі літери малими
     folded = normalized.casefold()
     # шукаю слова по одному, а не всі разом

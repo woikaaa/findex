@@ -1,9 +1,9 @@
-Readme short · MD
-
 # findex
 
+[![CI](https://github.com/woikaaa/findex/actions/workflows/ci.yml/badge.svg)](https://github.com/woikaaa/findex/actions/workflows/ci.yml)
+
 Моя маленька пошукова система. Будую її по частинах на курсі «Python».
-Тут три лабораторні, у кожної свій тег: `lab-01`, `lab-02`, `lab-03`.
+Тут шість лабораторних, у кожної свій тег: `lab-01` … `lab-06`.
 
 ## Корпус
 
@@ -16,17 +16,30 @@ python get_wiki.py
 
 Тести працюють на маленькому наборі в `tests/fixtures/`.
 
-## Запуск
+## Встановлення і запуск
+
+Потрібен Python 3.11 або новіший.
 
 ```bash
-python -m venv .venv
-.venv\Scripts\activate
-pip install -e ".[dev]"
+# для розробки (з uv)
+pip install uv
+uv sync
+uv run findex --help
 
-python tests/test_tokenize.py
-python tests/test_search.py
-python tests/test_lab3.py
-ruff check .
+# або як звичайна команда в системі
+uv tool install .
+findex --help
+```
+
+Без uv: `python -m venv .venv`, активувати, `pip install -e ".[dev]"`.
+
+Перевірки (так само їх запускає CI):
+
+```bash
+uv run ruff check .
+uv run ruff format --check .
+uv run pyright
+uv run pytest --cov
 ```
 
 ## Файли
@@ -44,6 +57,7 @@ ruff check .
 | `scoring.py`, `ranking.py` | 3    | ставить результати за порядком (BM25, TF-IDF) |
 | `snippets.py`, `utils.py`  | 3    | уривки тексту, таймер `@timed`                |
 | `sanity.py`, `evaluate.py` | 3    | перевірки та precision@5                      |
+| `cli.py`, `__main__.py`    | 4    | команда `findex` (index, search, stats)       |
 
 ---
 
@@ -55,8 +69,8 @@ ruff check .
 **Команди:**
 
 ```bash
-python -m findex.stats data/            # ледача версія
-python -m findex.stats data/ --eager    # жадібна версія (для порівняння)
+findex stats data/            # ледача версія
+findex stats data/ --eager    # жадібна версія (для порівняння)
 ```
 
 ## Правила токенізатора
@@ -89,9 +103,8 @@ python -m findex.stats data/ --eager    # жадібна версія (для п
 **Команди:**
 
 ```bash
-python -m findex.index data/ --out index.bin
-python -m findex.index data/ --out index.fbin --format binary
-python -m findex.search index.bin "київ OR львів" --engine set
+findex index data/ --out index.bin --format pickle
+findex index data/ --out index.fbin --format binary
 python -m findex.memstudy data/
 python -m findex.bench index.fbin
 ```
@@ -146,9 +159,9 @@ python -m findex.bench index.fbin
 **Команди:**
 
 ```bash
-python -m findex.index data/ --out index.bin --positions
-python -m findex.ranking index.bin "київ OR львів" -k 3
-python -m findex.ranking index.bin "київ OR львів" -k 3 -v --repeat 2
+findex index data/ --out index.bin --positions
+findex search "київ OR львів" -i index.bin -k 3
+findex -v search "київ OR львів" -i index.bin -k 3
 python -m findex.sanity index.bin
 python -m findex.evaluate index.bin queries.json
 ```
@@ -192,3 +205,65 @@ python -m findex.evaluate index.bin queries.json
 Обидві формули дали однаковий результат. Корпус маленький, тому різниці не видно.
 Пошук шукає точні форми слів («козаки» не знайде «козак»).
 
+
+
+---
+
+# Лаба 4: типи, тести, пакування і CLI
+
+**Мета.** Зробити з набору скриптів справжній пакет: типи без помилок, тести,
+встановлення однією командою і CI, який перевіряє все на кожен пуш.
+
+**Команди:**
+
+```bash
+findex index data/ -o index.bin                 # будує й зберігає індекс
+findex index data/ -o index.pkl --positions     # з позиціями (для фраз, формат pickle)
+findex search "київ OR львів" -i index.bin -k 5 # таблиця rich
+findex search "київ" -i index.bin --json        # JSON у stdout
+findex stats data/ --top 10
+findex -vv search ...                           # логи DEBUG у stderr
+```
+
+Таблиця і прогрес друкуються через `rich`, повідомлення і помилки йдуть у stderr,
+результат у stdout. При помилці (немає файлу, поганий запит) — один рядок
+українською і код виходу 2, без стека.
+
+## Типи
+
+- `pyright` у режимі `strict` для всього `src/`: 0 помилок, 0 попереджень.
+- `Protocol`: `Scorer` (оцінювач) і `PostingLike` (запис у списку). `Posting` і
+  `PlainPosting` підходять під нього без успадкування.
+- `Literal` для значень, яких кілька: `Storage`, `Engine`, `ScorerName`, `Fmt`.
+  `typer` сам перевіряє їх у командному рядку.
+- `@timed` типізований через `ParamSpec` і `TypeVar`, тому не губить підпис функції.
+
+## Тести
+
+```bash
+uv run pytest --cov
+```
+
+- 91 тест: токенізатор, індекс, злиття частин, пошук і парсер, ранжування, збереження,
+  CLI (через `CliRunner`).
+- 4 властивості через Hypothesis (merge = set на будь-яких списках, токенізація
+  ідемпотентна тощо).
+- Покриття: **79%** (рядки і гілки). Не покрито: `bench.py`, `memstudy.py`,
+  `evaluate.py`, `sanity.py` — це скрипти для вимірів з власним `main()`, які
+  працюють з повним корпусом `data/`; вони не входять у тести, бо їх результат
+  це числа в README, а не правильна/неправильна відповідь.
+
+## CI і випуск
+
+`.github/workflows/ci.yml` на кожен пуш і pull request запускає ruff, pyright і
+pytest на Python 3.11, 3.12 і 3.13. Версія `0.4.0`; у релізі на GitHub лежить
+файл `findex-0.4.0-py3-none-any.whl` (збирається командою `uv build`).
+
+## Що змінилось після лаби 3
+
+| Було                                         | Стало                              |
+| -------------------------------------------- | ---------------------------------- |
+| `python -m findex.index data/ ...`           | `findex index data/ ...`           |
+| `python -m findex.ranking index.bin "q"`     | `findex search "q" -i index.bin`   |
+| `python -m findex.stats data/`               | `findex stats data/`               |
+| `python tests/test_*.py` з assert            | `pytest` (фікстури, parametrize)   |

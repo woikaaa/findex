@@ -10,4 +10,10 @@ build/
 *.pkl
 *.bin
 *.fbin
-books_raw/
+books_raw/dist/
+.coverage
+coverage.xml
+htmlcov/
+crawl_out/
+*.jsonl.gz
+crawl.log

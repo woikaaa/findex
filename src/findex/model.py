@@ -4,56 +4,87 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from array import array
+from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from functools import cached_property
+from typing import Literal, Protocol, TypeAlias, get_args
+
+# три способи зберігати записи; Literal не дає написати помилку в назві
+Storage = Literal["dataclass", "slots", "array"]
+STORAGES: tuple[Storage, ...] = get_args(Storage)
 
 
 @dataclass(frozen=True, slots=True)
 class Posting:
     """Пара (документ, скільки разів слово в ньому).
     frozen - можна хешувати, slots- займає менше пам'яті."""
+
     doc_id: int
-    tf: int                            # частота слова в документі
-    positions: tuple[int, ...] = ()    # де саме слово стоїть (необов'язково)
+    tf: int  # частота слова в документі
+    positions: tuple[int, ...] = ()  # де саме слово стоїть (необов'язково)
 
 
 @dataclass(frozen=True, slots=True)
 class DocMeta:
     """Те, що треба, щоб показати результат користувачу."""
+
     path: str
     title: str
 
 
 @dataclass
 class PlainPosting:
+    """Те саме, що Posting, але звичайний dataclass (потрібен для порівняння пам'яті)."""
+
     doc_id: int
     tf: int
     positions: tuple[int, ...] = ()
 
 
-class Index(Mapping):
-    def __init__(self, storage: str, has_positions: bool, postings: dict,
-                 doc_lengths: dict[int, int], doc_meta: dict[int, DocMeta]) -> None:
+class PostingLike(Protocol):
+    """Усе, що має doc_id, tf і positions: і Posting, і PlainPosting підходять без наслідування."""
+
+    @property
+    def doc_id(self) -> int: ...
+    @property
+    def tf(self) -> int: ...
+    @property
+    def positions(self) -> tuple[int, ...]: ...
+
+
+# що лежить у словнику індексу для одного слова: список записів або пара масивів
+Entry: TypeAlias = "list[Posting] | list[PlainPosting] | tuple[array[int], array[int]]"
+
+
+class Index(Mapping[str, Sequence[PostingLike]]):
+    def __init__(
+        self,
+        storage: Storage,
+        has_positions: bool,
+        postings: dict[str, Entry],
+        doc_lengths: dict[int, int],
+        doc_meta: dict[int, DocMeta],
+    ) -> None:
         # тут я просто запам'ятовую все, що передали в клас
         self.storage = storage
         self.has_positions = has_positions
-        self.postings = postings        # слово -> список записів
+        self.postings = postings  # слово -> список записів
         self.doc_lengths = doc_lengths  # doc_id -> скільки слів у документі
-        self.doc_meta = doc_meta        # doc_id -> шлях і заголовок
+        self.doc_meta = doc_meta  # doc_id -> шлях і заголовок
         self.closed = False
 
     # ---- протокол Mapping (що Python викликає за лаштунками для len(), `in`, [], for ...)
-    def __getitem__(self, term: str):
+    def __getitem__(self, term: str) -> Sequence[PostingLike]:
         # беру запис слова зі словника
-        entry = self.postings[term]            # KeyError, якщо слова немає
-        if self.storage == "array":
+        entry = self.postings[term]  # KeyError, якщо слова немає
+        if isinstance(entry, tuple):
             # розкладаю пару масивів на дві частини
             ids, tfs = entry
-            return [Posting(i, t) for i, t in zip(ids, tfs)]
+            return [Posting(i, t) for i, t in zip(ids, tfs, strict=True)]
         return entry
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator[str]:
         # перебираю слова індексу
         return iter(self.postings)
 
@@ -61,13 +92,15 @@ class Index(Mapping):
         # скільки різних слів в індексі
         return len(self.postings)
 
-    def __contains__(self, term: object) -> bool:   # швидше, ніж стандартний у Mapping
+    def __contains__(self, term: object) -> bool:  # швидше, ніж стандартний у Mapping
         # просто питаю в словника, чи є таке слово
         return term in self.postings
 
     def __repr__(self) -> str:
-        return (f"Index(terms={len(self):_}, docs={self.num_docs:_}, "
-                f"storage={self.storage!r}, positions={self.has_positions})")
+        return (
+            f"Index(terms={len(self):_}, docs={self.num_docs:_}, "
+            f"storage={self.storage!r}, positions={self.has_positions})"
+        )
 
     # ---- обчислювані значення
     @property
@@ -92,15 +125,15 @@ class Index(Mapping):
         entry = self.postings.get(term)
         if entry is None:
             return 0
-        return len(entry[0]) if self.storage == "array" else len(entry)
+        return len(entry[0]) if isinstance(entry, tuple) else len(entry)
 
     # ---- допоміжні функції з лаби 2
-    def doc_ids(self, term: str):
+    def doc_ids(self, term: str) -> Sequence[int]:
         """Відсортовані doc_id, де є слово `term` (порожньо, якщо слова немає)."""
         entry = self.postings.get(term)
         if entry is None:
             return []
-        if self.storage == "array":
+        if isinstance(entry, tuple):
             return entry[0]
         return [p.doc_id for p in entry]
 

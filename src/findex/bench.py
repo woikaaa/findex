@@ -22,8 +22,8 @@ def main() -> None:
     index = store.load(a.index)
     # сортуємо слова від найчастіших (більше документів) до найрідших
     by_df = sorted(index.postings, key=lambda t: (-index.df(t), t))
-    common = by_df[:2]    # два найчастіші
-    rare = by_df[-2:]     # два найрідші
+    common = by_df[:2]  # два найчастіші
+    rare = by_df[-2:]  # два найрідші
     cases = [
         ("common AND common", common[0], common[1]),
         ("rare AND rare", rare[0], rare[1]),
@@ -38,7 +38,7 @@ def main() -> None:
     for name, t1, t2 in cases:
         # списки документів двох слів
         A, B = list(index.doc_ids(t1)), list(index.doc_ids(t2))
-        row = []
+        row: list[str] = []
         # міряю обидва способи
         for engine in ("merge", "set"):
             # нам потрібна лише функція AND

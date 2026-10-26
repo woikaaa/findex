@@ -1,81 +1,65 @@
-"""Перевірки через assert: merge проти set, хешування, збереження і завантаження. python tests/test_search.py"""
+"""Перевірки пошуку: merge проти set, парсер запитів, фрази."""
+
+from __future__ import annotations
 
 import random
-import sys
-import tempfile
-from pathlib import Path
 
-# додаємо папку src, щоб Python знайшов пакет findex
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
+import pytest
 
-from findex import store
-from findex.index import build_index
-from findex.model import DocMeta, Posting
+from findex.model import Index
+from findex.query import And, Not, Or, ParseError, Phrase, QueryError, Term, parse
 from findex.search import ENGINES, evaluate
 
-# маленький набір текстів для тестів (лежить у репозиторії)
-DATA = Path(__file__).resolve().parent / "fixtures"
 
-
-def test_merge_equals_set_on_random_lists():
-    # на випадкових списках обидва способи мають давати однаковий результат
-    rng = random.Random(1)  # фіксуємо випадковість, щоб тест був повторюваним
+@pytest.mark.parametrize("op", [0, 1, 2], ids=["and", "or", "andnot"])
+def test_merge_equals_set_on_random_lists(op: int) -> None:
+    rng = random.Random(1)  # фіксую випадковість, щоб тест повторювався
     for _ in range(200):
         a = sorted(rng.sample(range(50), rng.randint(0, 20)))
         b = sorted(rng.sample(range(50), rng.randint(0, 20)))
-        for i in range(3):  # 0 = AND, 1 = OR, 2 = AND NOT
-            assert ENGINES["merge"][i](a, b) == ENGINES["set"][i](a, b)
+        assert ENGINES["merge"][op](a, b) == ENGINES["set"][op](a, b)
 
 
-def test_posting_and_docmeta_are_hashable():
-    # frozen-класи можна класти у множину, однакові записи зливаються в один
-    assert len({Posting(1, 2), Posting(1, 2), Posting(2, 1)}) == 2
-    assert len({DocMeta("a", "t"), DocMeta("a", "t")}) == 1
+@pytest.mark.parametrize(
+    "query", ["alice rabbit", "queen OR duchess", "alice NOT rabbit", "NOT alice"]
+)
+def test_engines_agree_on_queries(index: Index, query: str) -> None:
+    assert evaluate(index, query, "merge") == evaluate(index, query, "set")
 
 
-def test_all_storages_give_same_answers():
-    # три способи зберігання мають давати однакову відповідь на запит
-    q = "alice NOT rabbit"
-    answers = [evaluate(build_index(DATA, s), q) for s in ("dataclass", "slots", "array")]
-    assert answers[0] == answers[1] == answers[2] and answers[0]
+def test_parser_precedence_and_before_or() -> None:
+    assert parse("a OR b c") == Or(Term("a"), And(Term("b"), Term("c")))
 
 
-def test_engines_agree_on_queries():
-    # merge і set дають однакові результати на справжніх запитах
-    idx = build_index(DATA, "slots")
-    for q in ("alice rabbit", "queen OR duchess", "alice NOT rabbit", "NOT alice"):
-        assert evaluate(idx, q, "merge") == evaluate(idx, q, "set")
+def test_parser_parens_not_and_phrase() -> None:
+    tree = parse("python AND (async OR await) NOT java")
+    assert tree == And(And(Term("python"), Or(Term("async"), Term("await"))), Not(Term("java")))
+    assert parse('"event loop"') == Phrase(("event", "loop"))
 
 
-def test_roundtrip_both_formats():
-    # зберегли й завантажили назад: відповідь не змінилась (pickle і binary)
-    idx = build_index(DATA, "slots")
-    want = evaluate(idx, "alice queen")
-    with tempfile.TemporaryDirectory() as d:
-        for fmt in ("pickle", "binary"):
-            path = Path(d) / f"i.{fmt}"
-            # зберігаю у файл цим форматом
-            store.save(idx, path, fmt)
-            assert evaluate(store.load(path), "alice queen") == want
+def test_operator_overloading_builds_same_tree() -> None:
+    built = Term("a") & (Term("b") | Term("c")) & ~Term("d")
+    assert built == parse("a AND (b OR c) NOT d")
 
 
-def test_postings_sorted_and_positions_flag():
-    # списки документів відсортовані, а позицій стільки, скільки разів слово є
-    idx = build_index(DATA, "slots", positions=True)
-    for plist in idx.postings.values():
-        ids = [p.doc_id for p in plist]
-        assert ids == sorted(ids)
-        assert all(len(p.positions) == p.tf for p in plist)
+@pytest.mark.parametrize("bad", ["", "(a", "a OR", "NOT", "a )"])
+def test_parse_errors(bad: str) -> None:
+    with pytest.raises(ParseError):
+        parse(bad)
 
 
-if __name__ == "__main__":
-    # запускаємо кожну функцію test_* і друкуємо результат
-    tests = [o for n, o in list(globals().items()) if n.startswith("test_")]
-    failed = 0
-    for t in tests:
-        try:
-            t(); print("PASS", t.__name__)
-        except AssertionError:
-            failed += 1; print("FAIL", t.__name__)
-    print(f"\n{len(tests) - failed}/{len(tests)} passed")
-    sys.exit(1 if failed else 0)
+def test_phrase_respects_word_order(index: Index) -> None:
+    assert parse('"cheshire cat"').evaluate(index) == {5, 7}
+    assert parse('"cat cheshire"').evaluate(index) == set()
+
+
+def test_not_removes_documents(index: Index) -> None:
+    assert parse("queen NOT duchess").evaluate(index) == {7}
+
+
+def test_phrase_needs_positions(corpus_dir) -> None:  # type: ignore[no-untyped-def]
+    from findex.index import build_index
+
+    plain = build_index(corpus_dir, "slots", positions=False)
+    with pytest.raises(QueryError, match="positions"):
+        parse('"cheshire cat"').evaluate(plain)

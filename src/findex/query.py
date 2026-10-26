@@ -8,12 +8,17 @@ from __future__ import annotations
 import functools
 import re
 from dataclasses import dataclass
+from typing import cast
 
 from findex.model import Index
 from findex.tokenize import tokenize
 
 
-class ParseError(ValueError):
+class QueryError(ValueError):
+    """Запит не можна виконати (очікувана помилка користувача, а не баг)."""
+
+
+class ParseError(QueryError):
     """Помилка в тексті запиту (наприклад, не закрита дужка)."""
 
 
@@ -21,15 +26,15 @@ class ParseError(ValueError):
 class Node:
     """Базовий клас: перевизначені оператори та обов'язковий метод evaluate()."""
 
-    def __and__(self, other: Node) -> Node:   # запис a & b
+    def __and__(self, other: Node) -> Node:  # запис a & b
         # a & b стає вузлом AND
         return And(self, other)
 
-    def __or__(self, other: Node) -> Node:    # запис a | b
+    def __or__(self, other: Node) -> Node:  # запис a | b
         # a | b стає вузлом OR
         return Or(self, other)
 
-    def __invert__(self) -> Node:             # запис ~a
+    def __invert__(self) -> Node:  # запис ~a
         # ~a стає вузлом NOT
         return Not(self)
 
@@ -45,25 +50,27 @@ class Node:
 @dataclass(frozen=True)
 class Term(Node):
     """Одне слово."""
-    text: str      # має бути вже нормалізоване (це робить parse())
 
-    def evaluate(self, index):
+    text: str  # має бути вже нормалізоване (це робить parse())
+
+    def evaluate(self, index: Index) -> set[int]:
         # документи з цим словом
         return set(index.doc_ids(self.text))
 
-    def positive_terms(self):
+    def positive_terms(self) -> frozenset[str]:
         return frozenset({self.text})
 
 
 @dataclass(frozen=True)
 class Phrase(Node):
     """Точна фраза: слова йдуть одне за одним."""
+
     terms: tuple[str, ...]
 
-    def evaluate(self, index):
+    def evaluate(self, index: Index) -> set[int]:
         # без позицій фразу не знайти
         if not index.has_positions:
-            raise ValueError("phrase queries need an index built with --positions")
+            raise QueryError("phrase queries need an index built with --positions")
         # спочатку беремо документи, де є ВСІ слова фрази
         docs = set(index.doc_ids(self.terms[0]))
         # і лишаю лише ті, де є й решта слів
@@ -74,7 +81,7 @@ class Phrase(Node):
         # doc_id -> позиції слова, для кожного слова фрази
         pos = [{p.doc_id: p.positions for p in index[t]} for t in self.terms]
         # тут збираю документи, де фраза є точно
-        found = set()
+        found: set[int] = set()
         for d in docs:
             rest = [set(pos[i][d]) for i in range(1, len(self.terms))]
             # фраза починається в позиції p, якщо p+1 є в другого слова,
@@ -83,48 +90,51 @@ class Phrase(Node):
                 found.add(d)
         return found
 
-    def positive_terms(self):
+    def positive_terms(self) -> frozenset[str]:
         return frozenset(self.terms)
 
 
 @dataclass(frozen=True)
 class And(Node):
     """Обидві частини мають збігатися."""
+
     left: Node
     right: Node
 
-    def evaluate(self, index):
+    def evaluate(self, index: Index) -> set[int]:
         # перетин: підходять обидві частини
         return self.left.evaluate(index) & self.right.evaluate(index)
 
-    def positive_terms(self):
+    def positive_terms(self) -> frozenset[str]:
         return self.left.positive_terms() | self.right.positive_terms()
 
 
 @dataclass(frozen=True)
 class Or(Node):
     """Достатньо однієї з частин."""
+
     left: Node
     right: Node
 
-    def evaluate(self, index):
+    def evaluate(self, index: Index) -> set[int]:
         # об'єднання: підходить будь-яка частина
         return self.left.evaluate(index) | self.right.evaluate(index)
 
-    def positive_terms(self):
+    def positive_terms(self) -> frozenset[str]:
         return self.left.positive_terms() | self.right.positive_terms()
 
 
 @dataclass(frozen=True)
 class Not(Node):
     """Усі документи, крім тих, що підходять під operand."""
+
     operand: Node
 
-    def evaluate(self, index):
+    def evaluate(self, index: Index) -> set[int]:
         # від усіх документів віднімаю ті, що підійшли
         return set(index.all_doc_ids()) - self.operand.evaluate(index)
 
-    def positive_terms(self):
+    def positive_terms(self) -> frozenset[str]:
         return frozenset()
 
 
@@ -135,7 +145,7 @@ _LEX = re.compile(r'"[^"]*"|\(|\)|[^\s()"]+')
 
 def _lex(query: str) -> list[str]:
     """Ділить запит на список шматків."""
-    return _LEX.findall(query)
+    return cast("list[str]", _LEX.findall(query))
 
 
 # парсер (збирає дерево)
@@ -197,7 +207,7 @@ class _Parser:
             raise ParseError(f"unexpected {tok!r}" if tok else "unexpected end of query")
         self.take()
         if tok == "(":
-            inner = self.or_expr()   # усередині дужок усе починається спочатку
+            inner = self.or_expr()  # усередині дужок усе починається спочатку
             if self.peek() != ")":
                 raise ParseError("missing closing parenthesis")
             self.take()
@@ -210,9 +220,9 @@ class _Parser:
             if not terms:
                 return None
             return Term(terms[0]) if len(terms) == 1 else Phrase(terms)
-        terms = list(tokenize(tok))          # така сама нормалізація, як в індексі
+        terms = list(tokenize(tok))  # така сама нормалізація, як в індексі
         if not terms:
-            return None                       # лише розділові знаки, ігноруємо
+            return None  # лише розділові знаки, ігноруємо
         node: Node = Term(terms[0])
         for t in terms[1:]:
             node = And(node, Term(t))

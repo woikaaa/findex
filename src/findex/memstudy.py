@@ -16,9 +16,10 @@ from pathlib import Path
 
 from findex import store
 from findex.index import build_index
+from findex.model import Storage
 
 # (підпис у таблиці, назва способу зберігання)
-ROWS = [
+ROWS: list[tuple[str, Storage]] = [
     ("list[Posting], plain @dataclass", "dataclass"),
     ("list[Posting], slots=True", "slots"),
     ("array('I') pairs (no objects)", "array"),
@@ -31,10 +32,14 @@ def main() -> None:
     p.add_argument("--positions", action="store_true")
     a = p.parse_args()
 
-    print("| Postings representation | Peak memory (build) | Index memory after build "
-          "| Pickle size | Load time |")
-    print("| ----------------------- | ------------------- | ------------------------ "
-          "| ----------- | --------- |")
+    print(
+        "| Postings representation | Peak memory (build) | Index memory after build "
+        "| Pickle size | Load time |"
+    )
+    print(
+        "| ----------------------- | ------------------- | ------------------------ "
+        "| ----------- | --------- |"
+    )
     for label, storage in ROWS:
         if storage == "array" and a.positions:
             continue  # array не вміє зберігати позиції
@@ -58,8 +63,10 @@ def main() -> None:
             # завантажую назад і міряю час
             store.load_pickle(path)
             load = time.perf_counter() - t0
-        print(f"| {label} | {peak / 1e6:.1f} MB | {current / 1e6:.1f} MB "
-              f"| {size / 1e6:.2f} MB | {load:.3f} s |")
+        print(
+            f"| {label} | {peak / 1e6:.1f} MB | {current / 1e6:.1f} MB "
+            f"| {size / 1e6:.2f} MB | {load:.3f} s |"
+        )
 
 
 if __name__ == "__main__":

@@ -1,0 +1,26 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - name: Встановити Python і залежності
+        run: uv sync --python ${{ matrix.python-version }}
+      - name: ruff (стиль)
+        run: uv run ruff check .
+      - name: ruff (форматування)
+        run: uv run ruff format --check .
+      - name: pyright (типи)
+        run: uv run pyright
+      - name: pytest
+        run: uv run pytest --cov

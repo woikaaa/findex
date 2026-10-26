@@ -7,6 +7,7 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
+from typing import Any, cast
 
 from findex import store
 from findex.ranking import Searcher
@@ -25,17 +26,17 @@ def main() -> None:
     p.add_argument("-k", type=int, default=5)
     a = p.parse_args()
     # читаю свою розмітку: запити і правильні документи
-    labelled = json.loads(a.queries.read_text(encoding="utf-8"))
+    labelled = cast("list[dict[str, Any]]", json.loads(a.queries.read_text(encoding="utf-8")))
 
     with store.open_index(a.index) as ix:
         scorers = {"TF-IDF": Searcher(ix, TfIdf()), "BM25": Searcher(ix, BM25())}
-        totals = dict.fromkeys(scorers, 0.0)  # суми балів для середнього
+        totals: dict[str, float] = dict.fromkeys(scorers, 0.0)  # суми балів для середнього
         print(f"| Query | relevant | P@{a.k} TF-IDF | P@{a.k} BM25 |")
         print("| ----- | -------- | ---------- | -------- |")
         for item in labelled:
             q = " OR ".join(item["query"].split())  # слова запиту з'єднуємо через OR
             rel = set(item["relevant"])
-            row = []
+            row: list[str] = []
             for name, s in scorers.items():
                 # беремо імена файлів знайдених документів і порівнюємо з розміткою
                 stems = [Path(ix.doc_meta[r.doc_id].path).stem for r in s.search(q, a.k)]

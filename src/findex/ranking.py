@@ -7,18 +7,14 @@
 
 from __future__ import annotations
 
-import argparse
 import functools
 import heapq
 import logging
 from dataclasses import dataclass, field
-from pathlib import Path
 
-from findex import store
 from findex.model import Index
 from findex.query import parse_cached
-from findex.scoring import BM25, Scorer, TfIdf
-from findex.snippets import snippet_for
+from findex.scoring import BM25, Scorer
 from findex.utils import timed
 
 log = logging.getLogger("findex.search")
@@ -82,40 +78,3 @@ class Searcher:
         """Слова запиту, які мають бути підсвічені в уривках."""
         # слова запиту без тих, що під NOT
         return parse_cached(query).positive_terms()
-
-
-def main() -> None:
-    # аргументи командного рядка
-    p = argparse.ArgumentParser(description="ranked search")
-    p.add_argument("index", type=Path)
-    p.add_argument("query")
-    p.add_argument("--scorer", choices=("bm25", "tfidf"), default="bm25")
-    p.add_argument("-k", type=int, default=10)
-    p.add_argument("--repeat", type=int, default=1, help="run the query N times (cache demo)")
-    p.add_argument("--no-snippets", action="store_true")
-    p.add_argument("-v", "--verbose", action="store_true", help="show @timed / cache log")
-    a = p.parse_args()
-
-    # з -v показуємо повідомлення логера (час і cache hit)
-    logging.basicConfig(level=logging.INFO if a.verbose else logging.WARNING,
-                        format="[%(name)s] %(message)s")
-
-    # with сам закриє індекс, навіть якщо буде помилка
-    with store.open_index(a.index) as index:
-        searcher = Searcher(index, BM25() if a.scorer == "bm25" else TfIdf())
-        # повторюю запит, щоб побачити кеш
-        for _ in range(a.repeat):
-            results = searcher.search(a.query, a.k)
-        print(f"{len(results)} result(s)  [{a.scorer}]  {index!r}")
-        terms = searcher.terms(a.query)
-        # друкую від найкращого до гіршого
-        for r in sorted(results, reverse=True):
-            print(" ", r)
-            if not a.no_snippets:
-                snip = snippet_for(index, r.doc_id, terms)
-                if snip:
-                    print("      ", snip)
-
-
-if __name__ == "__main__":
-    main()

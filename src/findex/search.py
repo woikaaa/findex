@@ -1,25 +1,34 @@
+"""
+булевий пошук: AND, OR, NOT двома способами (злиття двома вказівниками і множини).
+"""
+
 from __future__ import annotations
 
-import argparse
-import time
-import tracemalloc
-from pathlib import Path
+from collections.abc import Callable, Sequence
+from typing import Literal
 
-from findex import store
 from findex.model import Index
 from findex.tokenize import tokenize
 
+# який спосіб використати; Literal не дає помилитися в назві
+Engine = Literal["merge", "set"]
+
+# операція над двома відсортованими списками номерів документів
+SetOp = Callable[[Sequence[int], Sequence[int]], list[int]]
+
 
 # --------------------------------------------------- спосіб 1: злиття двома вказівниками
-def and_merge(a, b) -> list[int]:
+def and_merge(a: Sequence[int], b: Sequence[int]) -> list[int]:
     """Спільні номери двох відсортованих списків (AND)."""
     # ставлю обидва вказівники на початок
     i = j = 0  # два вказівники: по одному на кожен список
     # тут збиратиму результат
-    out = []
+    out: list[int] = []
     while i < len(a) and j < len(b):
         if a[i] == b[j]:
-            out.append(a[i]); i += 1; j += 1  # однакові: беремо й рухаємо обидва
+            out.append(a[i])
+            i += 1
+            j += 1  # однакові: беремо й рухаємо обидва
         elif a[i] < b[j]:
             i += 1  # у першому менше: рухаємо перший
         else:
@@ -28,67 +37,73 @@ def and_merge(a, b) -> list[int]:
     return out
 
 
-def or_merge(a, b) -> list[int]:
+def or_merge(a: Sequence[int], b: Sequence[int]) -> list[int]:
     """Усі номери з обох списків без повторів (OR)."""
     i = j = 0
-    out = []
+    out: list[int] = []
     while i < len(a) and j < len(b):
         if a[i] == b[j]:
-            out.append(a[i]); i += 1; j += 1
+            out.append(a[i])
+            i += 1
+            j += 1
         elif a[i] < b[j]:
-            out.append(a[i]); i += 1
+            out.append(a[i])
+            i += 1
         else:
-            out.append(b[j]); j += 1
+            out.append(b[j])
+            j += 1
     # один зі списків закінчився, решту іншого додаємо як є
     out.extend(a[i:])
     out.extend(b[j:])
     return out
 
 
-def andnot_merge(a, b) -> list[int]:
+def andnot_merge(a: Sequence[int], b: Sequence[int]) -> list[int]:
     """a AND NOT b: номери з a, яких немає в b."""
     i = j = 0
-    out = []
+    out: list[int] = []
     while i < len(a):
         if j >= len(b) or a[i] < b[j]:
-            out.append(a[i]); i += 1
+            out.append(a[i])
+            i += 1
         elif a[i] == b[j]:
-            i += 1; j += 1  # є в обох: пропускаємо
+            i += 1
+            j += 1  # є в обох: пропускаємо
         else:
             j += 1
     return out
 
 
 # --------------------------------------------------- спосіб 2: множини Python
-def and_set(a, b) -> list[int]:
+def and_set(a: Sequence[int], b: Sequence[int]) -> list[int]:
     """AND через перетин множин."""
     return sorted(set(a) & set(b))
 
 
-def or_set(a, b) -> list[int]:
+def or_set(a: Sequence[int], b: Sequence[int]) -> list[int]:
     """OR через об'єднання множин."""
     return sorted(set(a) | set(b))
 
 
-def andnot_set(a, b) -> list[int]:
+def andnot_set(a: Sequence[int], b: Sequence[int]) -> list[int]:
     """AND NOT через різницю множин."""
     return sorted(set(a) - set(b))
 
 
 # назва способу -> три його функції (AND, OR, AND NOT)
-ENGINES = {
+ENGINES: dict[Engine, tuple[SetOp, SetOp, SetOp]] = {
     "merge": (and_merge, or_merge, andnot_merge),
     "set": (and_set, or_set, andnot_set),
 }
 
 
-def evaluate(index: Index, query: str, engine: str = "merge") -> list[int]:
+def evaluate(index: Index, query: str, engine: Engine = "merge") -> list[int]:
     """Обчислює запит зліва направо. Повертає відсортовані doc_id."""
     # беру три функції вибраного способу
     f_and, f_or, f_andnot = ENGINES[engine]
-    result = None      # поточний результат
-    op = "AND"         # який оператор зараз діє (за замовчуванням AND)
-    negate = False     # чи стояв перед словом NOT
+    result: list[int] | None = None  # поточний результат
+    op = "AND"  # який оператор зараз діє (за замовчуванням AND)
+    negate = False  # чи стояв перед словом NOT
 
     # ділю запит на слова по пробілах
     for word in query.split():
@@ -116,41 +131,3 @@ def evaluate(index: Index, query: str, engine: str = "merge") -> list[int]:
             op, negate = "AND", False  # після слова повертаємо стандартні значення
     # якщо нічого не знайшлось, повертаю порожній список
     return result or []
-
-
-def main() -> None:
-    # аргументи командного рядка
-    p = argparse.ArgumentParser(description="search a saved findex index")
-    p.add_argument("index", type=Path)
-    p.add_argument("query")
-    p.add_argument("--engine", choices=tuple(ENGINES), default="merge")
-    p.add_argument("--max", type=int, default=10, help="max results to print")
-    a = p.parse_args()
-
-    # вимірюємо завантаження, пошук і пам'ять окремо
-    tracemalloc.start()
-    t0 = time.perf_counter()
-    # завантажую збережений індекс
-    index = store.load(a.index)
-    load_time = time.perf_counter() - t0
-
-    t0 = time.perf_counter()
-    # виконую сам пошук
-    hits = evaluate(index, a.query, a.engine)
-    search_time = time.perf_counter() - t0
-    _, peak = tracemalloc.get_traced_memory()
-    tracemalloc.stop()
-
-    print(f"{len(hits)} result(s) for {a.query!r}  [engine={a.engine}]")
-    # показую лише перші результати
-    for doc_id in hits[: a.max]:
-        m = index.doc_meta[doc_id]
-        print(f"  #{doc_id:<4} {m.path}  —  {m.title}")
-    if len(hits) > a.max:
-        print(f"  ... and {len(hits) - a.max} more")
-    print(f"load: {load_time:.4f} s   search: {search_time * 1000:.3f} ms   "
-          f"peak memory: {peak / 1024:.1f} KiB")
-
-
-if __name__ == "__main__":
-    main()
