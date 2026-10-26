@@ -1,16 +1,3 @@
-"""
-вимірювання паралельної збірки індексу (лаба 5).
-
-Запуск:
-    python -m findex.bench_parallel run data/ --repeats 3
-
-Кожна клітинка таблиці (виконавець + число воркерів) міряється в ОКРЕМОМУ
-процесі Python. Інакше пік пам'яті (RSS) попередньої клітинки псував би наступну.
-Для кожної клітинки беремо медіану за кілька повторів.
-
-Результати: docs/bench.json, docs/bench.md (таблиця) і docs/speedup.png (графік).
-"""
-
 from __future__ import annotations
 
 import argparse
@@ -43,7 +30,9 @@ def peak_rss_mb() -> float:
     return peak / 2**20 if sys.platform == "darwin" else peak / 1024
 
 
-def run_cell(corpus: Path, executor: Executors, workers: int, storage: str) -> dict[str, float]:
+def run_cell(
+    corpus: Path, executor: Executors, workers: int, storage: str
+) -> dict[str, float]:
     """Одна збірка з вимірами. Викликається в окремому процесі."""
     paths = list_corpus_files(corpus)
     res = build_parallel(paths, workers, executor, storage, False)  # type: ignore[arg-type]  # executor і storage приходять із командного рядка як str
@@ -74,7 +63,8 @@ def cpu_model() -> str:
             import winreg
 
             key = winreg.OpenKey(
-                winreg.HKEY_LOCAL_MACHINE, r"HARDWARE\DESCRIPTION\System\CentralProcessor\0"
+                winreg.HKEY_LOCAL_MACHINE,
+                r"HARDWARE\DESCRIPTION\System\CentralProcessor\0",
             )
             return str(winreg.QueryValueEx(key, "ProcessorNameString")[0]).strip()
         except OSError:
@@ -107,6 +97,8 @@ def collect(
     rows: list[dict[str, Any]] = []
     plan: list[tuple[str, int]] = [("serial", 1)]
     plan += [(e, w) for e in executors for w in workers]
+    print("  прогрів (цей запуск не рахується)...", file=sys.stderr)
+    _run_cell_subprocess(corpus, "serial", 1, storage)
     for executor, w in plan:
         runs: list[dict[str, float]] = []
         for r in range(repeats):
@@ -152,7 +144,9 @@ def _amdahl_lines(rows: list[dict[str, Any]]) -> list[str]:
         return []
     last = max(procs, key=lambda r: r["workers"])
     serial_wall = rows[0]["wall"]
-    s = min(1.0, last["merge"] / serial_wall)  # частка роботи, яку не можна розпаралелити
+    s = min(
+        1.0, last["merge"] / serial_wall
+    )  # частка роботи, яку не можна розпаралелити
     n = last["workers"]
     limit = 1 / (s + (1 - s) / n)
     return [
@@ -164,10 +158,14 @@ def _amdahl_lines(rows: list[dict[str, Any]]) -> list[str]:
 
 
 def main() -> None:
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawTextHelpFormatter)
+    ap = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawTextHelpFormatter
+    )
     sub = ap.add_subparsers(dest="cmd", required=True)
 
-    run = sub.add_parser("run", help="виміряти всі клітинки і записати таблицю та графік")
+    run = sub.add_parser(
+        "run", help="виміряти всі клітинки і записати таблицю та графік"
+    )
     run.add_argument("corpus", type=Path)
     run.add_argument("--workers", type=int, nargs="+", default=default_workers())
     run.add_argument("--executors", nargs="+", default=["threads", "processes"])
@@ -183,10 +181,14 @@ def main() -> None:
 
     args = ap.parse_args()
     if args.cmd == "cell":
-        print(json.dumps(run_cell(args.corpus, args.executor, args.workers, args.storage)))
+        print(
+            json.dumps(run_cell(args.corpus, args.executor, args.workers, args.storage))
+        )
         return
 
-    rows = collect(args.corpus, args.executors, args.workers, args.repeats, args.storage)
+    rows = collect(
+        args.corpus, args.executors, args.workers, args.repeats, args.storage
+    )
     md = to_markdown(rows, args.corpus, args.repeats)
     args.out.mkdir(parents=True, exist_ok=True)
     (args.out / "bench.json").write_text(json.dumps(rows, indent=2), encoding="utf-8")
