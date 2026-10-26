@@ -60,15 +60,11 @@ def test_parallel_equals_sequential(
 
 @pytest.mark.slow
 @pytest.mark.parametrize("workers", [1, 3])
-def test_processes_equal_sequential(
-    corpus_dir: Path, index: Index, workers: int
-) -> None:
+def test_processes_equal_sequential(corpus_dir: Path, index: Index, workers: int) -> None:
     # справжні процеси (spawn): повільніше, тому позначено slow
-    res = build_parallel(
-        list_corpus_files(corpus_dir), workers, "processes", "slots", True
-    )
+    res = build_parallel(list_corpus_files(corpus_dir), workers, "processes", "slots", True)
     _same(res.index, index)
-    assert res.worker_cpu_s >= 0
+    assert res.worker_cpu_s >= 0  # на Windows годинник грубий (~16 мс), тож 0 теж можливий
 
 
 @pytest.mark.parametrize("kind", ["serial", "threads"])
@@ -107,17 +103,7 @@ def test_executors_constant() -> None:
 def test_cli_workers_flag(corpus_dir: Path, tmp_path: Path) -> None:
     out = tmp_path / "i.bin"
     res = CliRunner().invoke(
-        app,
-        [
-            "index",
-            str(corpus_dir),
-            "-o",
-            str(out),
-            "--workers",
-            "2",
-            "--executor",
-            "threads",
-        ],
+        app, ["index", str(corpus_dir), "-o", str(out), "--workers", "2", "--executor", "threads"]
     )
     assert res.exit_code == 0 and out.exists()
     bad = CliRunner().invoke(app, ["index", str(corpus_dir), "--executor", "gpu"])
@@ -142,3 +128,19 @@ def test_bench_cell_and_markdown(corpus_dir: Path) -> None:
     ]
     md = to_markdown(rows, corpus_dir, repeats=1)
     assert "| serial | 1 |" in md and "Закон Амдала" in md
+
+
+@pytest.mark.slow
+def test_cli_default_executor_for_array_storage(corpus_dir: Path, tmp_path: Path) -> None:
+    # з --storage array типово беремо процеси (вони там швидші); результат той самий
+    out = tmp_path / "i.bin"
+    res = CliRunner().invoke(
+        app, ["index", str(corpus_dir), "-o", str(out), "--storage", "array", "--format", "binary"]
+    )
+    assert res.exit_code == 0 and out.exists()
+
+
+def test_cli_default_executor_for_slots_is_serial(corpus_dir: Path, tmp_path: Path) -> None:
+    out = tmp_path / "i.bin"
+    res = CliRunner().invoke(app, ["index", str(corpus_dir), "-o", str(out)])
+    assert res.exit_code == 0 and out.exists()

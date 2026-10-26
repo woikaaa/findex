@@ -30,9 +30,7 @@ def peak_rss_mb() -> float:
     return peak / 2**20 if sys.platform == "darwin" else peak / 1024
 
 
-def run_cell(
-    corpus: Path, executor: Executors, workers: int, storage: str
-) -> dict[str, float]:
+def run_cell(corpus: Path, executor: Executors, workers: int, storage: str) -> dict[str, float]:
     """Одна збірка з вимірами. Викликається в окремому процесі."""
     paths = list_corpus_files(corpus)
     res = build_parallel(paths, workers, executor, storage, False)  # type: ignore[arg-type]  # executor і storage приходять із командного рядка як str
@@ -144,9 +142,7 @@ def _amdahl_lines(rows: list[dict[str, Any]]) -> list[str]:
         return []
     last = max(procs, key=lambda r: r["workers"])
     serial_wall = rows[0]["wall"]
-    s = min(
-        1.0, last["merge"] / serial_wall
-    )  # частка роботи, яку не можна розпаралелити
+    s = min(1.0, last["merge"] / serial_wall)  # частка роботи, яку не можна розпаралелити
     n = last["workers"]
     limit = 1 / (s + (1 - s) / n)
     return [
@@ -158,14 +154,10 @@ def _amdahl_lines(rows: list[dict[str, Any]]) -> list[str]:
 
 
 def main() -> None:
-    ap = argparse.ArgumentParser(
-        description=__doc__, formatter_class=argparse.RawTextHelpFormatter
-    )
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawTextHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
 
-    run = sub.add_parser(
-        "run", help="виміряти всі клітинки і записати таблицю та графік"
-    )
+    run = sub.add_parser("run", help="виміряти всі клітинки і записати таблицю та графік")
     run.add_argument("corpus", type=Path)
     run.add_argument("--workers", type=int, nargs="+", default=default_workers())
     run.add_argument("--executors", nargs="+", default=["threads", "processes"])
@@ -181,14 +173,10 @@ def main() -> None:
 
     args = ap.parse_args()
     if args.cmd == "cell":
-        print(
-            json.dumps(run_cell(args.corpus, args.executor, args.workers, args.storage))
-        )
+        print(json.dumps(run_cell(args.corpus, args.executor, args.workers, args.storage)))
         return
 
-    rows = collect(
-        args.corpus, args.executors, args.workers, args.repeats, args.storage
-    )
+    rows = collect(args.corpus, args.executors, args.workers, args.repeats, args.storage)
     md = to_markdown(rows, args.corpus, args.repeats)
     args.out.mkdir(parents=True, exist_ok=True)
     (args.out / "bench.json").write_text(json.dumps(rows, indent=2), encoding="utf-8")

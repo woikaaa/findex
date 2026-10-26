@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import sys
 from pathlib import Path
 from typing import Annotated
@@ -32,10 +33,6 @@ from findex.store import Fmt, IndexLoadError, open_index, save
 # окрема консоль для stderr: прогрес і помилки не псують stdout
 err = Console(stderr=True)
 out = Console()
-
-# Якщо після вимірів (лаба 5) процеси виграли, тут міняю "serial" на "processes",
-# а число воркерів за замовчуванням на os.cpu_count().
-DEFAULT_EXECUTOR: Executors = "serial"
 
 app = typer.Typer(
     help="findex — пошук по текстових корпусах.",
@@ -92,14 +89,27 @@ def index_cmd(
         bool, typer.Option("--positions", help="Зберігати позиції (для фраз).")
     ] = False,
     limit: Annotated[int | None, typer.Option(help="Взяти лише перші N документів.")] = None,
-    workers: Annotated[int, typer.Option(min=1, help="Скільки воркерів (потоків/процесів).")] = 1,
+    workers: Annotated[
+        int | None,
+        typer.Option(min=1, help="Скільки воркерів (за замовчуванням 4 для потоків/процесів)."),
+    ] = None,
     executor: Annotated[
-        Executors, typer.Option(help="Чим виконувати: serial, threads або processes.")
-    ] = DEFAULT_EXECUTOR,
+        Executors | None,
+        typer.Option(help="Чим виконувати: serial, threads або processes (див. типовий вибір)."),
+    ] = None,
 ) -> None:
-    """Будує індекс і зберігає його у файл."""
+    """Будує індекс і зберігає його у файл.
+
+    Типовий вибір за моїми вимірами (лаба 5): з --storage array процеси швидші за
+    один потік, тому беремо processes з 4 воркерами. Для slots і для позицій
+    (--positions) процеси програють через pickle, тому беремо serial."""
     if not corpus.exists():
         raise _fail(f"корпус не знайдено: {corpus}")
+    # типовий виконавець залежить від способу зберігання (див. документацію команди)
+    if executor is None:
+        executor = "processes" if storage == "array" and corpus.is_dir() else "serial"
+    if workers is None:
+        workers = min(os.cpu_count() or 1, 4) if executor != "serial" else 1
     # бінарний формат не зберігає позиції, тож для фраз беремо pickle
     if fmt is None:
         fmt = "pickle" if positions else "binary"
