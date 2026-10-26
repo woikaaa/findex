@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import random
+from pathlib import Path
 
 import pytest
 
@@ -57,7 +58,7 @@ def test_not_removes_documents(index: Index) -> None:
     assert parse("queen NOT duchess").evaluate(index) == {7}
 
 
-def test_phrase_needs_positions(corpus_dir) -> None:  # type: ignore[no-untyped-def]
+def test_phrase_needs_positions(corpus_dir: Path) -> None:
     from findex.index import build_index
 
     plain = build_index(corpus_dir, "slots", positions=False)

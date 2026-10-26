@@ -15,7 +15,7 @@ from findex.snippets import make_snippet
 
 @pytest.mark.parametrize("name", SCORER_NAMES)
 def test_scorers_are_interchangeable(index: Index, name: str) -> None:
-    scorer = make_scorer(name)  # type: ignore[arg-type]
+    scorer = make_scorer(name)  # type: ignore[arg-type]  # name приходить як str із parametrize
     res = Searcher(index, scorer).search("queen OR duchess", 3)
     assert res == sorted(res, reverse=True) and len(res) == 3
     assert scorer("alice", Posting(0, 1), index) == scorer.score("alice", Posting(0, 1), index)
@@ -23,7 +23,7 @@ def test_scorers_are_interchangeable(index: Index, name: str) -> None:
 
 def test_make_scorer_unknown_name() -> None:
     with pytest.raises(KeyError):
-        make_scorer("nope")  # type: ignore[arg-type]
+        make_scorer("nope")  # type: ignore[arg-type]  # навмисно неправильне ім'я
 
 
 def test_tfidf_and_bm25_are_different_classes() -> None:

@@ -16,7 +16,7 @@ from findex.store import IndexLoadError, load, open_index, save
 def test_roundtrip_keeps_answers(corpus_dir: Path, tmp_path: Path, fmt: str) -> None:
     idx = build_index(corpus_dir, "slots")  # binary не зберігає позицій
     path = tmp_path / f"i.{fmt}"
-    save(idx, path, fmt)  # type: ignore[arg-type]
+    save(idx, path, fmt)  # type: ignore[arg-type]  # fmt приходить як str із parametrize
     assert evaluate(load(path), "alice queen") == evaluate(idx, "alice queen")
 
 
