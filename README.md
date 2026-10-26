@@ -21,25 +21,20 @@ python get_wiki.py
 Потрібен Python 3.11 або новіший.
 
 ```bash
-# для розробки (з uv)
-pip install uv
-uv sync
-uv run findex --help
-
-# або як звичайна команда в системі
-uv tool install .
+python -m venv .venv
+.venv\Scripts\activate          # Windows (PowerShell)
+pip install -e .                 # сам findex і те, що йому потрібно
+pip install pytest pytest-cov hypothesis ruff pyright matplotlib psutil   # інструменти для розробки
 findex --help
 ```
 
-Без uv: `python -m venv .venv`, активувати, `pip install -e ".[dev]"`.
-
-Перевірки (так само їх запускає CI):
+Перевірки (їх же запускає CI на GitHub):
 
 ```bash
-uv run ruff check .
-uv run ruff format --check .
-uv run pyright
-uv run pytest --cov
+ruff check .
+ruff format --check .
+pyright
+pytest --cov
 ```
 
 ## Файли
@@ -58,6 +53,9 @@ uv run pytest --cov
 | `snippets.py`, `utils.py`  | 3    | уривки тексту, таймер `@timed`                |
 | `sanity.py`, `evaluate.py` | 3    | перевірки та precision@5                      |
 | `cli.py`, `__main__.py`    | 4    | команда `findex` (index, search, stats)       |
+| `parallel.py`              | 5    | паралельна збірка індексу (потоки, процеси)   |
+| `bench_parallel.py`, `plotting.py` | 5 | виміри прискорення і графік            |
+| `race_demo.py`             | 5    | демонстрація гонитви потоків                  |
 
 ---
 
@@ -241,14 +239,14 @@ findex -vv search ...                           # логи DEBUG у stderr
 ## Тести
 
 ```bash
-uv run pytest --cov
+pytest --cov
 ```
 
-- 93 тести: токенізатор, індекс, злиття частин, пошук і парсер, ранжування, збереження,
+- на момент лаби 4 було 93 тести: токенізатор, індекс, злиття частин, пошук і парсер, ранжування, збереження,
   CLI (через `CliRunner`).
 - 6 властивостей через Hypothesis: `load(save(index))` дає той самий індекс, постінги
   завжди відсортовані, merge = операції над set, токенізація ідемпотентна тощо.
-- Покриття: **79%** (рядки і гілки). Не покрито: `bench.py`, `memstudy.py`,
+- Покриття на момент лаби 4: **79%** (рядки і гілки). Не покрито: `bench.py`, `memstudy.py`,
   `evaluate.py`, `sanity.py` — це скрипти для вимірів з власним `main()`, які
   працюють з повним корпусом `data/`; вони не входять у тести, бо їх результат
   це числа в README, а не правильна/неправильна відповідь.
@@ -257,7 +255,7 @@ uv run pytest --cov
 
 `.github/workflows/ci.yml` на кожен пуш і pull request запускає ruff, pyright і
 pytest на Python 3.11, 3.12 і 3.13. Версія `0.4.0`; у релізі на GitHub лежить
-файл `findex-0.4.0-py3-none-any.whl` (збирається командою `uv build`).
+файл `findex-0.4.0-py3-none-any.whl` (збирається командою `python -m build --wheel`).
 
 ## Що змінилось після лаби 3
 
@@ -267,3 +265,86 @@ pytest на Python 3.11, 3.12 і 3.13. Версія `0.4.0`; у релізі н�
 | `python -m findex.ranking index.bin "q"`     | `findex search "q" -i index.bin`   |
 | `python -m findex.stats data/`               | `findex stats data/`               |
 | `python tests/test_*.py` з assert            | `pytest` (фікстури, parametrize)   |
+
+---
+
+# Лаба 5: конкурентність і GIL
+
+**Мета.** Виміряти, що дають кілька ядер для побудови індексу: потоки, процеси і
+Python 3.13t без GIL.
+
+## Як це влаштовано
+
+`build_index` поділено на дві частини: `build_partial(paths, first_doc_id, ...)`
+будує частину індексу з кількох файлів, а `merge(partials)` склеює частини.
+`build_partial` — функція верхнього рівня, тому її можна віддати іншому процесу.
+У воркер їдуть **лише шляхи** до файлів, а не прочитані тексти. Кожен шматок
+одразу отримує свій діапазон `doc_id` (шматки йдуть підряд і їх розміри в байтах
+приблизно однакові), тому номери документів унікальні на весь корпус.
+
+Послідовний варіант `merge([build_partial(усі файли)])` дає той самий індекс, що й
+у лабі 4 (окремий тест `test_sequential_partial_merge_equals_build_index`).
+
+```bash
+findex index data/ -o index.bin --executor serial
+findex index data/ -o index.bin --executor threads --workers 4
+findex index data/ -o index.bin --executor processes --workers 4
+```
+
+Процеси запускаються методом `spawn` (однаково на Windows, macOS і Linux). Якщо
+воркер упав, `findex index` одразу падає і показує його помилку, а не висить.
+
+## Вимірювання
+
+```bash
+pip install matplotlib psutil                    # якщо ще не встановлено
+python -m findex.bench_parallel run data/ --repeats 3
+```
+
+Скрипт міряє виконавців `threads` і `processes` для 1, 2, 4, 8 і `os.cpu_count()`
+воркерів (плюс рядок `serial`). Кожна клітинка рахується в окремому процесі Python,
+щонайменше 3 рази, у таблицю йде медіана. Результат лежить у `docs/bench.md`,
+`docs/bench.json` і `docs/speedup.png`.
+
+- wall — скільки пройшло за годинником; CPU — сума процесорного часу воркерів і
+  `merge`; RSS — пік пам'яті батьківського процесу; прискорення = wall(serial) / wall.
+
+**Машина:** `<<модель процесора, N ядер — скопіювати з першого рядка docs/bench.md>>`
+
+`<<вставити сюди таблицю з docs/bench.md>>`
+
+![Прискорення від числа воркерів](docs/speedup.png)
+
+Пряма пунктирна лінія — ідеальне лінійне зростання.
+
+## Python 3.13t без GIL
+
+Збірку 3.13t ставить інструмент `uv` (тільки для цього досліду; решта проєкту
+працює через звичайні `venv` і `pip`):
+
+```bash
+pip install uv
+uv python install 3.13t
+uv venv --python 3.13t .venv313t
+.venv313t\Scripts\activate
+pip install -e .
+python -c "import sys; print(sys._is_gil_enabled())"      # False
+python -m findex.race_demo
+findex index data/ -o index.bin --executor threads --workers 4
+```
+
+Час міряю так: `Measure-Command { findex index data/ -o index.bin --executor threads --workers 4 }`
+(і так само для `--executor serial`, `--workers 1, 2, 4`).
+
+`<<вставити час для serial і threads на 3.13t і вивід race_demo>>`
+
+## Сторінка про GIL
+
+Докладно своїми словами: [docs/gil.md](docs/gil.md) (чому потоки не прискорили,
+чому процеси прискорили і чим це оплачено, закон Амдала, 3.13t, гонитва і Lock).
+
+## Який виконавець типовий
+
+`<<якщо processes виграв: у cli.py змінюю DEFAULT_EXECUTOR на "processes". Якщо ні — лишається serial, бо ...>>`
+
+

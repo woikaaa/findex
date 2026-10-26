@@ -21,6 +21,7 @@ from rich.table import Table
 from findex.corpus import CorpusError, list_corpus_files
 from findex.index import build_index
 from findex.model import Storage
+from findex.parallel import Executors
 from findex.query import QueryError
 from findex.ranking import Searcher
 from findex.scoring import ScorerName, make_scorer
@@ -31,6 +32,10 @@ from findex.store import Fmt, IndexLoadError, open_index, save
 # окрема консоль для stderr: прогрес і помилки не псують stdout
 err = Console(stderr=True)
 out = Console()
+
+# Якщо після вимірів (лаба 5) процеси виграли, тут міняю "serial" на "processes",
+# а число воркерів за замовчуванням на os.cpu_count().
+DEFAULT_EXECUTOR: Executors = "serial"
 
 app = typer.Typer(
     help="findex — пошук по текстових корпусах.",
@@ -87,6 +92,10 @@ def index_cmd(
         bool, typer.Option("--positions", help="Зберігати позиції (для фраз).")
     ] = False,
     limit: Annotated[int | None, typer.Option(help="Взяти лише перші N документів.")] = None,
+    workers: Annotated[int, typer.Option(min=1, help="Скільки воркерів (потоків/процесів).")] = 1,
+    executor: Annotated[
+        Executors, typer.Option(help="Чим виконувати: serial, threads або processes.")
+    ] = DEFAULT_EXECUTOR,
 ) -> None:
     """Будує індекс і зберігає його у файл."""
     if not corpus.exists():
@@ -121,6 +130,8 @@ def index_cmd(
                 positions=positions,
                 limit=limit,
                 on_doc=lambda: progress.advance(task),
+                workers=workers,
+                executor=executor,
             )
         save(idx, out_path, fmt)
     except CorpusError as exc:

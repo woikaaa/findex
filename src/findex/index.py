@@ -15,12 +15,15 @@ from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, field
 from itertools import islice
 from pathlib import Path
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 from findex.corpus import Document, iter_documents, list_corpus_files, read_document
 from findex.model import STORAGES, DocMeta, Entry, Index, PlainPosting, Posting, Storage
 from findex.tokenize import tokenize
 from findex.utils import timed
+
+if TYPE_CHECKING:
+    from findex.parallel import Executors
 
 
 def _title(text: str) -> str:
@@ -198,14 +201,25 @@ def build_index(
     positions: bool = False,
     limit: int | None = None,
     on_doc: Callable[[], None] | None = None,
+    workers: int = 1,
+    executor: Executors = "serial",
 ) -> Index:
-    """Будує індекс з папки з .txt або з файлу .jsonl."""
+    """Будує індекс з папки з .txt або з файлу .jsonl.
+
+    workers і executor (serial, threads, processes) працюють лише для папки з .txt."""
     root = Path(root)
     if root.is_dir():
         paths = list_corpus_files(root)
         if limit is not None:
             paths = paths[:limit]  # беремо лише перші `limit` файлів
-        return merge([build_partial(paths, 0, storage, positions, on_doc)])
+        if workers == 1 and executor == "serial":
+            return merge([build_partial(paths, 0, storage, positions, on_doc)])
+        # імпорт тут, щоб не було циклу: parallel сам імпортує index
+        from findex.parallel import EXECUTORS, build_parallel
+
+        if executor not in EXECUTORS:
+            raise ValueError(f"unknown executor: {executor}")
+        return build_parallel(paths, workers, executor, storage, positions, on_doc).index
     # беру документи по одному, як у лабі 1 (так читається й .jsonl)
     docs = iter_documents(root)
     if limit is not None:
