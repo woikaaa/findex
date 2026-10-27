@@ -1,3 +1,16 @@
+"""
+вимірювання паралельної збірки індексу (лаба 5).
+
+Запуск:
+    python -m findex.bench_parallel run data/ --repeats 3
+
+Кожна клітинка таблиці (виконавець + число воркерів) міряється в ОКРЕМОМУ
+процесі Python. Інакше пік пам'яті (RSS) попередньої клітинки псував би наступну.
+Для кожної клітинки беремо медіану за кілька повторів.
+
+Результати: docs/bench.json, docs/bench.md (таблиця) і docs/speedup.png (графік).
+"""
+
 from __future__ import annotations
 
 import argparse
@@ -12,24 +25,10 @@ from typing import Any
 
 from findex.corpus import list_corpus_files
 from findex.parallel import Executors, build_parallel
+from findex.sysinfo import cpu_model, gil_status, peak_rss_mb
 
 
 # ----------------------------------------------------------------- одна клітинка
-def peak_rss_mb() -> float:
-    """Пік пам'яті цього процесу (RSS) у мегабайтах."""
-    if sys.platform == "win32":
-        try:
-            import psutil  # на Windows немає модуля resource, тому беру psutil
-        except ImportError:
-            return float("nan")  # psutil немає (наприклад у 3.13t без dev-залежностей)
-        return psutil.Process().memory_info().peak_wset / 2**20
-    import resource
-
-    peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
-    # на Linux ru_maxrss у кілобайтах, на macOS у байтах
-    return peak / 2**20 if sys.platform == "darwin" else peak / 1024
-
-
 def run_cell(corpus: Path, executor: Executors, workers: int, storage: str) -> dict[str, float]:
     """Одна збірка з вимірами. Викликається в окремому процесі."""
     paths = list_corpus_files(corpus)
@@ -54,34 +53,6 @@ def _run_cell_subprocess(
 
 
 # --------------------------------------------------------------- опис машини
-def cpu_model() -> str:
-    """Назва процесора (щоб записати її в README)."""
-    if sys.platform == "win32":
-        try:
-            import winreg
-
-            key = winreg.OpenKey(
-                winreg.HKEY_LOCAL_MACHINE,
-                r"HARDWARE\DESCRIPTION\System\CentralProcessor\0",
-            )
-            return str(winreg.QueryValueEx(key, "ProcessorNameString")[0]).strip()
-        except OSError:
-            return platform.processor() or "unknown"
-    try:
-        for line in Path("/proc/cpuinfo").read_text(encoding="utf-8").splitlines():
-            if line.startswith("model name"):
-                return line.split(":", 1)[1].strip()
-    except OSError:
-        pass
-    return platform.processor() or platform.machine()
-
-
-def gil_status() -> str:
-    """Чи ввімкнений GIL у цьому інтерпретаторі (3.13t без GIL відповідає False)."""
-    check = getattr(sys, "_is_gil_enabled", None)
-    return "GIL увімкнено" if check is None or check() else "GIL ВИМКНЕНО"
-
-
 # ----------------------------------------------------------------------- таблиця
 def default_workers() -> list[int]:
     cores = os.cpu_count() or 1
@@ -93,10 +64,11 @@ def collect(
 ) -> list[dict[str, Any]]:
     """Міряє всі клітинки й повертає рядки з медіанами."""
     rows: list[dict[str, Any]] = []
-    plan: list[tuple[str, int]] = [("serial", 1)]
-    plan += [(e, w) for e in executors for w in workers]
+    # прогрів: перший запуск завжди повільніший (холодний диск і кеш), тому його не рахую
     print("  прогрів (цей запуск не рахується)...", file=sys.stderr)
     _run_cell_subprocess(corpus, "serial", 1, storage)
+    plan: list[tuple[str, int]] = [("serial", 1)]
+    plan += [(e, w) for e in executors for w in workers]
     for executor, w in plan:
         runs: list[dict[str, float]] = []
         for r in range(repeats):

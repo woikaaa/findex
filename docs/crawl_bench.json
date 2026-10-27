@@ -1,0 +1,26 @@
+[
+  {
+    "concurrency": 1,
+    "wall": 13.062,
+    "pages_per_second": 15.325,
+    "errors": 0,
+    "peak_rss_mb": 45.8,
+    "pages": 200
+  },
+  {
+    "concurrency": 5,
+    "wall": 4.02,
+    "pages_per_second": 49.905,
+    "errors": 0,
+    "peak_rss_mb": 45.3,
+    "pages": 200
+  },
+  {
+    "concurrency": 20,
+    "wall": 2.287,
+    "pages_per_second": 87.875,
+    "errors": 0,
+    "peak_rss_mb": 48.4,
+    "pages": 200
+  }
+]

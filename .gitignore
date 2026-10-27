@@ -17,7 +17,12 @@ htmlcov/
 crawl_out/
 *.jsonl.gz
 crawl.log
+crawl.jsonl
+*.log
 
 .venv313t/
 data_big/
 docs_big/
+chaos.log
+s.json
+x.bin

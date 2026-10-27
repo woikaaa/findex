@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import json
 import unicodedata
 from collections.abc import Iterable
 from pathlib import Path
+from typing import cast
 
 from findex.model import Index
 from findex.tokenize import TOKEN_RE
@@ -49,11 +51,44 @@ def make_snippet(
     return ("… " if lo > 0 else "") + body + (" …" if hi < len(text) else "")
 
 
-def snippet_for(index: Index, doc_id: int, terms: Iterable[str], width: int = 80) -> str:
-    """Читає файл документа й робить з нього уривок."""
+def _text_from_jsonl(source: Path, doc_key: str) -> str:
+    """Шукає в .jsonl (його пише findex crawl) запис із таким id (адресою) і дає його текст."""
+    # читаю файл по рядку, у пам'яті все одразу не тримаю
+    with source.open(encoding="utf-8", errors="replace") as f:
+        for line in f:
+            try:
+                loaded: object = json.loads(line)
+            except json.JSONDecodeError:
+                continue  # зіпсований рядок пропускаю
+            if not isinstance(loaded, dict):
+                continue
+            record = cast("dict[str, object]", loaded)
+            # для сторінок із краулера id — це їхня адреса, вона ж лежить у індексі як path
+            if record.get("id") == doc_key:
+                text = record.get("text", "")
+                return text if isinstance(text, str) else ""
+    return ""
+
+
+def snippet_for(
+    index: Index,
+    doc_id: int,
+    terms: Iterable[str],
+    width: int = 80,
+    source: Path | None = None,
+) -> str:
+    """Читає текст документа й робить з нього уривок.
+
+    Для .txt беру сам файл. Для сторінок з краулера (у індексі там адреса, а не файл)
+    текст шукаю в JSONL, який передали як source.
+    """
     # де лежить файл цього документа
-    path = Path(index.doc_meta[doc_id].path)
-    # уривок роблю лише з .txt файлів
-    if path.suffix != ".txt" or not path.exists():
+    meta = index.doc_meta[doc_id]
+    path = Path(meta.path)
+    if path.suffix == ".txt" and path.exists():
+        text = path.read_text(encoding="utf-8", errors="replace")
+    elif source is not None and source.suffix == ".jsonl" and source.exists():
+        text = _text_from_jsonl(source, meta.path)
+    else:
         return ""
-    return make_snippet(path.read_text(encoding="utf-8", errors="replace"), terms, width)
+    return make_snippet(text, terms, width) if text else ""
