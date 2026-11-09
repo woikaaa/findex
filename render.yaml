@@ -1,0 +1,14 @@
+# Опис сервісу для Render (Blueprint). Уся конфігурація тут і в змінних оточення, без секретів у коді.
+services:
+  - type: web
+    name: findex
+    runtime: docker
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: INDEX_PATH
+        value: /app/demo/index.bin
+      - key: CORPUS_PATH
+        value: /app/demo/corpus
+      - key: LOG_LEVEL
+        value: INFO

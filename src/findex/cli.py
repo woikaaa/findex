@@ -253,6 +253,49 @@ def stats_cmd(
     out.print(table)
 
 
+# ---------------------------------------------------------------- serve (лаба 7)
+@app.command("serve")
+def serve_cmd(
+    host: Annotated[
+        str, typer.Option(help="Адреса, яку слухати (у Docker: 0.0.0.0).")
+    ] = "127.0.0.1",
+    port: Annotated[
+        int,
+        typer.Option(envvar="PORT", min=1, max=65535, help="Порт (платформи дають його у PORT)."),
+    ] = 8000,
+    workers: Annotated[int, typer.Option(min=1, help="Скільки процесів uvicorn запустити.")] = 1,
+    index_path: Annotated[
+        Path | None, typer.Option("--index", "-i", help="Файл індексу (інакше INDEX_PATH).")
+    ] = None,
+    corpus: Annotated[
+        Path | None, typer.Option(help="Папка з .txt або .jsonl для уривків (інакше CORPUS_PATH).")
+    ] = None,
+) -> None:
+    """Запускає веб-сервіс: API і сторінку пошуку."""
+    import uvicorn
+
+    # застосунок читає налаштування зі змінних оточення, тому передаю прапорці саме так
+    # (так само воно працює і з кількома процесами: кожен прочитає оточення сам)
+    if index_path is not None:
+        os.environ["INDEX_PATH"] = str(index_path)
+    if corpus is not None:
+        os.environ["CORPUS_PATH"] = str(corpus)
+    # callback CLI вже поставив кореневий обробник логів; сервіс має власний (з id запиту),
+    # тому кореневий прибираю, щоб кожен рядок не друкувався двічі
+    logging.getLogger().handlers.clear()
+    # factory=True: uvicorn сам викликає create_app() у кожному процесі
+    uvicorn.run(
+        "findex.web.app:create_app",
+        factory=True,
+        host=host,
+        port=port,
+        workers=workers,
+        log_level="info",
+        # свій рядок про кожен запит (з id і часом) пише сам сервіс, тож рядок uvicorn зайвий
+        access_log=False,
+    )
+
+
 # ---------------------------------------------------------------- crawl (лаба 6)
 class _SlowCallbackCounter(logging.Handler):
     """Рахує попередження asyncio у debug-режимі: "Executing ... took 0.3 seconds"."""

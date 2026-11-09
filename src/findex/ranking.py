@@ -74,6 +74,11 @@ class Searcher:
         # складаю список результатів
         return [SearchResult(d, s, self.index.doc_meta[d].title) for d, s in top]
 
+    def count(self, query: str) -> int:
+        """Скільки документів підходить під запит усього (потрібно для сторінок результатів)."""
+        # беру з кешу: якщо запит уже виконувався, нічого не рахуємо наново
+        return len(self._match(query))
+
     def terms(self, query: str) -> frozenset[str]:
         """Слова запиту, які мають бути підсвічені в уривках."""
         # слова запиту без тих, що під NOT

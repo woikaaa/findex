@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}{% if q %}{{ q }} — findex{% else %}findex — пошук по текстах{% endif %}{% endblock %}
+{% block content %}
+<form class="search" action="/" method="get" role="search">
+  <input type="search" name="q" value="{{ q }}" placeholder="Введіть запит, наприклад: київ OR львів" maxlength="200" autofocus aria-label="Запит">
+  <select name="scorer" aria-label="Формула ранжування">
+    <option value="bm25" {% if scorer == "bm25" %}selected{% endif %}>BM25</option>
+    <option value="tfidf" {% if scorer == "tfidf" %}selected{% endif %}>TF-IDF</option>
+  </select>
+  <button type="submit">Шукати</button>
+</form>
+<p class="hint">Можна поєднувати слова: <code>AND</code>, <code>OR</code>, <code>NOT</code> і дужки.</p>
+
+{% if error %}
+  <div class="alert" role="alert">{{ error }}</div>
+{% endif %}
+
+{% if result %}
+  {% if result.total == 0 %}
+    <p class="empty">Нічого не знайдено. Спробуйте інші слова або <code>OR</code>.</p>
+  {% else %}
+    <p class="summary">
+      Знайдено документів: <strong>{{ result.total }}</strong>
+      {% if result.pages > 1 %}· сторінка {{ page }} з {{ result.pages }}{% endif %}
+    </p>
+    {% for hit in result.hits %}
+      <section class="result">
+        <h2><a href="/view/{{ hit.doc_id }}?q={{ q|urlencode }}">{{ hit.title }}</a></h2>
+        <div class="meta"><span class="pill">бал {{ "%.2f"|format(hit.score) }}</span><span>документ № {{ hit.doc_id }}</span></div>
+        {% if hit.snippet %}<p class="snippet">{{ hit.snippet|highlight }}</p>{% endif %}
+      </section>
+    {% endfor %}
+
+    {% if result.pages > 1 %}
+      {# невелике вікно сторінок: перша, остання і по дві навколо поточної #}
+      <nav class="pages" aria-label="Сторінки результатів">
+        {% if page > 1 %}<a href="{{ page_url(page - 1) }}" rel="prev">← Назад</a>{% endif %}
+        {% for n in range(1, result.pages + 1) %}
+          {% if n == page %}<span class="cur" aria-current="page">{{ n }}</span>
+          {% elif n == 1 or n == result.pages or (n >= page - 2 and n <= page + 2) %}<a href="{{ page_url(n) }}">{{ n }}</a>
+          {% elif n == page - 3 or n == page + 3 %}<span class="gap">…</span>
+          {% endif %}
+        {% endfor %}
+        {% if page < result.pages %}<a href="{{ page_url(page + 1) }}" rel="next">Далі →</a>{% endif %}
+      </nav>
+    {% endif %}
+  {% endif %}
+{% elif not error %}
+  <p class="summary">{% if docs_total %}У пошуку {{ docs_total }} документів.{% endif %} Спробуйте:</p>
+  <div class="examples">
+    <a href="/?q=україна">україна</a>
+    <a href="/?q=київ%20OR%20львів">київ OR львів</a>
+    <a href="/?q=(річка%20OR%20озеро)%20AND%20NOT%20море">(річка OR озеро) AND NOT море</a>
+  </div>
+{% endif %}
+{% endblock %}

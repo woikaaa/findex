@@ -26,3 +26,5 @@ docs_big/
 chaos.log
 s.json
 x.bin
+
+!demo/index.bin

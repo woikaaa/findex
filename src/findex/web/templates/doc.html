@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}{{ title }} — findex{% endblock %}
+{% block content %}
+<p><a href="{% if q %}/?q={{ q|urlencode }}{% else %}/{% endif %}">← До результатів</a></p>
+<article class="doc">
+  <h1>{{ title }}</h1>
+  <p class="hint">Документ № {{ doc_id }}</p>
+  {% if has_text %}
+    {% for p in paragraphs %}<p>{{ p|highlight }}</p>{% endfor %}
+  {% else %}
+    <p class="empty">Текст цього документа недоступний на сервері.</p>
+  {% endif %}
+</article>
+{% endblock %}
