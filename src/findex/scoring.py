@@ -12,7 +12,6 @@ SCORER_NAMES: tuple[ScorerName, ...] = get_args(ScorerName)
 
 
 class Scorer(Protocol):
-
     def score(self, term: str, posting: PostingLike, index: Index) -> float: ...
 
 
