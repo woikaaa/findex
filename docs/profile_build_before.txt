@@ -1,0 +1,52 @@
+# cProfile: build_index(data\wiki)
+
+## Топ-15 за власним часом функції
+
+         957229 function calls (957217 primitive calls) in 1.026 seconds
+
+   Ordered by: internal time
+   List reduced from 166 to 15 due to restriction <15>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+       40    0.360    0.009    1.026    0.026 index.py:70(add)
+   268707    0.206    0.000    0.455    0.000 tokenize.py:51(tokenize)
+       40    0.152    0.004    0.152    0.004 {built-in method unicodedata.normalize}
+   268667    0.078    0.000    0.078    0.000 {method 'group' of 're.Match' objects}
+   119964    0.064    0.000    0.064    0.000 {method 'setdefault' of 'dict' objects}
+   120057    0.026    0.000    0.026    0.000 {method 'append' of 'list' objects}
+       40    0.023    0.001    0.034    0.001 {method 'read' of '_io.TextIOWrapper' objects}
+        1    0.019    0.019    0.032    0.032 index.py:155(merge)
+       40    0.018    0.000    0.018    0.000 {method 'casefold' of 'str' objects}
+       40    0.016    0.000    0.016    0.000 {method 'splitlines' of 'str' objects}
+    56151    0.013    0.000    0.013    0.000 {method 'get' of 'dict' objects}
+   119964    0.013    0.000    0.013    0.000 __init__.py:613(__missing__)
+       40    0.010    0.000    0.010    0.000 {built-in method _codecs.utf_8_decode}
+       40    0.010    0.000    0.010    0.000 {built-in method _io.open}
+        1    0.004    0.004    1.080    1.080 index.py:117(build_partial)
+
+
+## Топ-15 за сумарним часом
+
+         957229 function calls (957217 primitive calls) in 1.026 seconds
+
+   Ordered by: cumulative time
+   List reduced from 166 to 15 due to restriction <15>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+        1    0.000    0.000    1.116    1.116 utils.py:27(wrapper)
+        1    0.002    0.002    1.116    1.116 index.py:197(build_index)
+        1    0.004    0.004    1.080    1.080 index.py:117(build_partial)
+       40    0.360    0.009    1.026    0.026 index.py:70(add)
+   268707    0.206    0.000    0.455    0.000 tokenize.py:51(tokenize)
+       40    0.152    0.004    0.152    0.004 {built-in method unicodedata.normalize}
+   268667    0.078    0.000    0.078    0.000 {method 'group' of 're.Match' objects}
+   119964    0.064    0.000    0.064    0.000 {method 'setdefault' of 'dict' objects}
+       40    0.000    0.000    0.049    0.001 corpus.py:45(read_document)
+       40    0.000    0.000    0.047    0.001 _local.py:539(read_text)
+       40    0.000    0.000    0.046    0.001 _abc.py:628(read_text)
+       40    0.023    0.001    0.034    0.001 {method 'read' of '_io.TextIOWrapper' objects}
+        1    0.019    0.019    0.032    0.032 index.py:155(merge)
+   120057    0.026    0.000    0.026    0.000 {method 'append' of 'list' objects}
+       40    0.018    0.000    0.018    0.000 {method 'casefold' of 'str' objects}
+
+

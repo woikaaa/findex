@@ -1,0 +1,52 @@
+# cProfile: search (data\wiki.bin), 900 пошуків
+
+## Топ-15 за власним часом функції
+
+         485702 function calls (485102 primitive calls) in 0.266 seconds
+
+   Ordered by: internal time
+   List reduced from 34 to 15 due to restriction <15>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+    46500    0.078    0.000    0.171    0.000 scoring.py:55(score)
+    46500    0.036    0.000    0.059    0.000 model.py:122(df)
+      900    0.032    0.000    0.288    0.000 ranking.py:50(search)
+     1500    0.022    0.000    0.053    0.000 model.py:78(__getitem__)
+      900    0.014    0.000    0.024    0.000 heapq.py:523(nlargest)
+    94800    0.013    0.000    0.013    0.000 {built-in method builtins.len}
+    46500    0.013    0.000    0.019    0.000 model.py:106(num_docs)
+    46500    0.010    0.000    0.010    0.000 {method 'get' of 'dict' objects}
+    46500    0.009    0.000    0.009    0.000 {built-in method math.log}
+    48000    0.007    0.000    0.007    0.000 {built-in method builtins.isinstance}
+    46500    0.007    0.000    0.007    0.000 model.py:117(doc_length)
+    24300    0.004    0.000    0.004    0.000 ranking.py:73(<lambda>)
+     6900    0.003    0.000    0.003    0.000 {built-in method _heapq.heapreplace}
+      900    0.003    0.000    0.292    0.000 utils.py:27(wrapper)
+        1    0.002    0.002    0.297    0.297 profile_run.py:40(run_queries)
+
+
+## Топ-15 за сумарним часом
+
+         485702 function calls (485102 primitive calls) in 0.266 seconds
+
+   Ordered by: cumulative time
+   List reduced from 34 to 15 due to restriction <15>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+        1    0.002    0.002    0.297    0.297 profile_run.py:40(run_queries)
+      900    0.003    0.000    0.292    0.000 utils.py:27(wrapper)
+      900    0.032    0.000    0.288    0.000 ranking.py:50(search)
+    46500    0.078    0.000    0.171    0.000 scoring.py:55(score)
+    46500    0.036    0.000    0.059    0.000 model.py:122(df)
+     1500    0.022    0.000    0.053    0.000 model.py:78(__getitem__)
+      900    0.014    0.000    0.024    0.000 heapq.py:523(nlargest)
+    46500    0.013    0.000    0.019    0.000 model.py:106(num_docs)
+    94800    0.013    0.000    0.013    0.000 {built-in method builtins.len}
+    46500    0.010    0.000    0.010    0.000 {method 'get' of 'dict' objects}
+    46500    0.009    0.000    0.009    0.000 {built-in method math.log}
+    48000    0.007    0.000    0.007    0.000 {built-in method builtins.isinstance}
+    46500    0.007    0.000    0.007    0.000 model.py:117(doc_length)
+    24300    0.004    0.000    0.004    0.000 ranking.py:73(<lambda>)
+     6900    0.003    0.000    0.003    0.000 {built-in method _heapq.heapreplace}
+
+
