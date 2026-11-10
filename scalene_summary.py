@@ -4,7 +4,7 @@ scalene_summary.py: короткий підсумок профілю Scalene (л
     scalene run --cpu-only -o docs/scalene_search.json profile_run.py search data/wiki.bin --plain
     python scalene_summary.py docs/scalene_search.json
 
-Показує функції проєкту (файли з findex у шляху) за часом процесора і ділить цей час
+Показує функції (разом із бібліотечними) за часом процесора і ділить цей час
 на Python (повільний інтерпретатор), native (код на C: re, math, вбудовані функції) і system.
 """
 
@@ -23,9 +23,6 @@ def main() -> None:
     top = int(sys.argv[2]) if len(sys.argv) > 2 else 12
     rows: list[tuple[float, float, float, str]] = []
     for filename, info in cast("dict[str, Any]", data["files"]).items():
-        # беру лише код проєкту (і сам скрипт запуску), бібліотеки Python пропускаю
-        if "findex" not in filename and "profile_run" not in filename:
-            continue
         short = filename.replace("\\", "/").split("/")[-1]
         for fn in cast("list[dict[str, Any]]", info.get("functions", [])):
             py = float(fn.get("n_cpu_percent_python", 0.0))
@@ -33,6 +30,11 @@ def main() -> None:
             sysp = float(fn.get("n_sys_percent", 0.0))
             rows.append((py + nat + sysp, py, nat, f"{short}:{fn['line']}"))
     rows.sort(reverse=True)
+    all_py = sum(r[1] for r in rows)
+    all_nat = sum(r[2] for r in rows)
+    print(
+        f"Усього: Python {all_py:.1f}%, native {all_nat:.1f}% (решта це системний час і службові)\n"
+    )
     print(f"{'функція':45} {'всього %':>9} {'Python %':>9} {'native %':>9}")
     for total, py, nat, name in rows[:top]:
         print(f"{name:45} {total:9.1f} {py:9.1f} {nat:9.1f}")

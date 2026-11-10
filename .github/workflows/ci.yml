@@ -24,3 +24,15 @@ jobs:
         run: uv run pyright
       - name: pytest
         run: uv run pytest --cov
+      - name: "Бенчмарки (pytest-benchmark, пошук і збірка індексу)"
+        if: matrix.python-version == '3.13'
+        run: uv run pytest benchmarks --benchmark-only --benchmark-json=bench.json
+      - name: Таблиця бенчмарків у підсумку запуску
+        if: matrix.python-version == '3.13'
+        run: uv run python benchmarks/summary.py bench.json >> "$GITHUB_STEP_SUMMARY"
+      - name: Зберегти результати бенчмарків
+        if: matrix.python-version == '3.13'
+        uses: actions/upload-artifact@v4
+        with:
+          name: bench-json
+          path: bench.json

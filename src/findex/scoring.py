@@ -12,7 +12,6 @@ SCORER_NAMES: tuple[ScorerName, ...] = get_args(ScorerName)
 
 
 class Scorer(Protocol):
-    """Опис того, що має вміти будь-який "оцінювач": рахувати бал слова в документі."""
 
     def score(self, term: str, posting: PostingLike, index: Index) -> float: ...
 

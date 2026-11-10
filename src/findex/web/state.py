@@ -10,7 +10,7 @@ from pathlib import Path, PureWindowsPath
 from typing import cast
 
 from findex.model import DocMeta, Index
-from findex.ranking import Searcher
+from findex.npsearch import NpIndex, NpSearcher
 from findex.scoring import SCORER_NAMES, ScorerName, make_scorer
 from findex.store import load
 
@@ -88,12 +88,14 @@ class AppState:
     texts: DocTexts
     snippet_width: int = 90
     started: float = field(default_factory=time.monotonic)
-    # по одному Searcher на кожну формулу (у кожного свій кеш запитів)
-    searchers: dict[ScorerName, Searcher] = field(init=False)
+    # по одному NpSearcher (пошук на масивах NumPy, лаба 8) на кожну формулу: у кожного
+    # свій кеш запитів, а великі масиви спільні
+    searchers: dict[ScorerName, NpSearcher] = field(init=False)
 
     def __post_init__(self) -> None:
         # створюю оцінювачі наперед, щоб не робити це під час запиту
-        self.searchers = {name: Searcher(self.index, make_scorer(name)) for name in SCORER_NAMES}
+        arrays = NpIndex.from_index(self.index)
+        self.searchers = {name: NpSearcher(arrays, make_scorer(name)) for name in SCORER_NAMES}
 
     @property
     def uptime(self) -> float:
